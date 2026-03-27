@@ -126,6 +126,7 @@ button:hover,
 }
 
 .add-site-form input,
+.add-site-form textarea,
 .inline-form input[type="text"],
 .inline-form input[type="url"],
 .inline-form select,
@@ -141,6 +142,7 @@ button:hover,
 }
 
 .add-site-form input:focus,
+.add-site-form textarea:focus,
 .inline-form input:focus,
 .inline-form select:focus {
     border-color: var(--primary-2);

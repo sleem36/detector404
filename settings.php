@@ -74,11 +74,28 @@ if ($isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $formError = (string) ($result['error'] ?? 'Ошибка сохранения интервала');
         }
+    } elseif ($action === 'update_alert_emails') {
+        $emailsRaw = (string) ($_POST['alert_emails'] ?? '');
+        $result = setAlertEmailRecipients($pdo, $emailsRaw);
+        if ($result['ok'] === true) {
+            $formSuccess = 'Email-уведомления обновлены';
+        } else {
+            $formError = (string) ($result['error'] ?? 'Ошибка сохранения email-уведомлений');
+        }
+    } elseif ($action === 'test_alert_emails') {
+        $result = sendTestEmailAlert($pdo, nowUtc());
+        if ($result['ok'] === true) {
+            $count = (int) ($result['sent_count'] ?? 0);
+            $formSuccess = 'Тестовое письмо отправлено. Успешно: ' . $count;
+        } else {
+            $formError = (string) ($result['error'] ?? 'Ошибка отправки тестового письма');
+        }
     }
 }
 
 $sites = $isAuthed ? getSitesWithStats($pdo) : [];
 $currentInterval = $isAuthed ? getCheckIntervalMinutes($pdo) : 60;
+$alertEmailsRaw = $isAuthed ? getAlertEmailRecipientsRaw($pdo) : '';
 $intervalOptions = [
     0 => 'Отключено',
     1 => '1 мин',
@@ -146,7 +163,24 @@ $intervalOptions = [
                 </label>
                 <button type="submit">Сохранить</button>
             </form>
-            <p><small>Рекомендуется запускать системный cron каждую минуту, интервал управляется здесь.</small></p>
+        </section>
+
+        <section class="card">
+            <h2>Email-уведомления о недоступности</h2>
+            <form method="post" class="add-site-form">
+                <input type="hidden" name="action" value="update_alert_emails">
+                <label>
+                    Email адреса через запятую
+                    <textarea name="alert_emails" rows="3" placeholder="admin@example.com, devops@example.com"><?= e($alertEmailsRaw) ?></textarea>
+                </label>
+                <div class="inline-form">
+                    <button type="submit">Сохранить</button>
+                </div>
+            </form>
+            <form method="post" class="inline-form">
+                <input type="hidden" name="action" value="test_alert_emails">
+                <button type="submit">Тест почты</button>
+            </form>
         </section>
 
         <section class="card">

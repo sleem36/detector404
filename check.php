@@ -20,7 +20,11 @@ if (!shouldRunScheduledChecks($pdo, $now)) {
 
 $sites = $pdo->query('SELECT id FROM sites ORDER BY id ASC')->fetchAll();
 foreach ($sites as $site) {
-    runSiteCheck($pdo, (int) $site['id']);
+    $siteId = (int) $site['id'];
+    $result = runSiteCheck($pdo, $siteId);
+    if (($result['ok'] ?? false) === true) {
+        sendDownEmailAlertIfNeeded($pdo, $siteId, $result, $now);
+    }
 }
 
 $pdo->exec("DELETE FROM checks WHERE timestamp < datetime('now', '-30 days')");

@@ -99,6 +99,139 @@ function shouldRunScheduledChecks(PDO $pdo, string $now): bool
     return true;
 }
 
+function normalizeEmailList(string $raw): array
+{
+    $parts = preg_split('/[,;\s]+/', trim($raw)) ?: [];
+    $emails = [];
+    foreach ($parts as $part) {
+        $email = strtolower(trim($part));
+        if ($email === '') {
+            continue;
+        }
+        $emails[] = $email;
+    }
+
+    return array_values(array_unique($emails));
+}
+
+function getAlertEmailRecipientsRaw(PDO $pdo): string
+{
+    return (string) getSetting($pdo, 'alert_email_recipients', '');
+}
+
+function getAlertEmailRecipients(PDO $pdo): array
+{
+    return normalizeEmailList(getAlertEmailRecipientsRaw($pdo));
+}
+
+function setAlertEmailRecipients(PDO $pdo, string $raw): array
+{
+    $emails = normalizeEmailList($raw);
+    foreach ($emails as $email) {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['ok' => false, 'error' => 'В списке есть некорректный email: ' . $email];
+        }
+    }
+
+    setSetting($pdo, 'alert_email_recipients', implode(',', $emails));
+    return ['ok' => true];
+}
+
+function emailSubjectUtf8(string $subject): string
+{
+    return '=?UTF-8?B?' . base64_encode($subject) . '?=';
+}
+
+function sendEmailToRecipients(array $recipients, string $subject, string $message): int
+{
+    if ($recipients === []) {
+        return 0;
+    }
+
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $headers = "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $headers .= "From: monitor@" . preg_replace('/[^a-z0-9\.\-]/i', '', $host) . "\r\n";
+
+    $sentCount = 0;
+    foreach ($recipients as $recipient) {
+        if (@mail($recipient, $subject, $message, $headers)) {
+            $sentCount++;
+        }
+    }
+
+    return $sentCount;
+}
+
+function sendTestEmailAlert(PDO $pdo, string $now): array
+{
+    $recipients = getAlertEmailRecipients($pdo);
+    if ($recipients === []) {
+        return ['ok' => false, 'error' => 'Список email пуст. Сначала сохраните хотя бы один адрес.'];
+    }
+
+    $subject = emailSubjectUtf8('Тест уведомлений мониторинга');
+    $message = "Это тестовое сообщение мониторинга сайтов.\n\n"
+        . 'Время (UTC): ' . $now . "\n"
+        . 'Получатели: ' . implode(', ', $recipients) . "\n\n"
+        . "Если письмо получено, значит email-уведомления работают.";
+
+    $sentCount = sendEmailToRecipients($recipients, $subject, $message);
+    if ($sentCount === 0) {
+        return ['ok' => false, 'error' => 'Не удалось отправить тестовое письмо. Проверьте почтовые настройки сервера.'];
+    }
+
+    return ['ok' => true, 'sent_count' => $sentCount];
+}
+
+function sendDownEmailAlertIfNeeded(PDO $pdo, int $siteId, array $checkResult, string $now): void
+{
+    if (!isset($checkResult['is_available']) || (int) $checkResult['is_available'] !== 0) {
+        return;
+    }
+
+    $recipients = getAlertEmailRecipients($pdo);
+    if ($recipients === []) {
+        return;
+    }
+
+    $alertKey = 'last_down_email_site_' . $siteId;
+    $lastSentRaw = getSetting($pdo, $alertKey, null);
+    if ($lastSentRaw !== null && trim($lastSentRaw) !== '') {
+        try {
+            $nowDt = new DateTimeImmutable($now, new DateTimeZone('UTC'));
+            $lastDt = new DateTimeImmutable($lastSentRaw, new DateTimeZone('UTC'));
+            if (($nowDt->getTimestamp() - $lastDt->getTimestamp()) < 86400) {
+                return;
+            }
+        } catch (Exception) {
+            // Ignore invalid date and continue with send attempt.
+        }
+    }
+
+    $site = getSiteById($pdo, $siteId);
+    if (!$site) {
+        return;
+    }
+
+    $status = $checkResult['status_code'] !== null ? ('HTTP ' . (int) $checkResult['status_code']) : 'Нет HTTP-кода';
+    $response = $checkResult['response_time_ms'] !== null ? ((string) $checkResult['response_time_ms'] . ' ms') : '—';
+
+    $subject = emailSubjectUtf8('Мониторинг: сайт недоступен - ' . (string) $site['name']);
+    $message = "Зафиксирована недоступность сайта.\n\n"
+        . 'Сайт: ' . (string) $site['name'] . "\n"
+        . 'URL: ' . (string) $site['url'] . "\n"
+        . 'Статус: ' . $status . "\n"
+        . 'Отклик: ' . $response . "\n"
+        . 'Время (UTC): ' . $now . "\n\n"
+        . "Это уведомление отправляется не чаще одного раза в 24 часа для каждого сайта.";
+
+    $sentCount = sendEmailToRecipients($recipients, $subject, $message);
+    if ($sentCount > 0) {
+        setSetting($pdo, $alertKey, $now);
+    }
+}
+
 function getSitesWithStats(PDO $pdo): array
 {
     $sql = <<<SQL
