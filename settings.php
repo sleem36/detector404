@@ -8,6 +8,7 @@ $pdo = db();
 $authError = null;
 $formError = null;
 $formSuccess = null;
+$mailDiagnostics = null;
 
 if (isset($_GET['logout']) && $_GET['logout'] === '1') {
     unset($_SESSION['settings_auth']);
@@ -84,6 +85,7 @@ if ($isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'test_alert_emails') {
         $result = sendTestEmailAlert($pdo, nowUtc());
+        $mailDiagnostics = $result['details'] ?? null;
         if ($result['ok'] === true) {
             $count = (int) ($result['sent_count'] ?? 0);
             $formSuccess = 'Тестовое письмо отправлено. Успешно: ' . $count;
@@ -181,6 +183,28 @@ $intervalOptions = [
                 <input type="hidden" name="action" value="test_alert_emails">
                 <button type="submit">Тест почты</button>
             </form>
+            <?php if ($mailDiagnostics !== null): ?>
+                <div class="mail-log">
+                    <div><strong>Диагностика отправки</strong></div>
+                    <div><small>From: <?= e((string) ($mailDiagnostics['from'] ?? '')) ?></small></div>
+                    <?php if (isset($mailDiagnostics['results']) && is_array($mailDiagnostics['results'])): ?>
+                        <?php foreach ($mailDiagnostics['results'] as $item): ?>
+                            <?php
+                            $ok = (bool) ($item['ok'] ?? false);
+                            $recipient = (string) ($item['recipient'] ?? '');
+                            $error = (string) ($item['error'] ?? '');
+                            ?>
+                            <div>
+                                <small>
+                                    <?= $ok ? 'OK' : 'FAIL' ?> — <?= e($recipient) ?>
+                                    <?= $error !== '' ? (' | ' . e($error)) : '' ?>
+                                </small>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    <div><small>Важно: mail()=OK означает принятие сервером, но не гарантирует доставку во входящие.</small></div>
+                </div>
+            <?php endif; ?>
         </section>
 
         <section class="card">

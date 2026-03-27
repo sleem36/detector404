@@ -142,25 +142,52 @@ function emailSubjectUtf8(string $subject): string
     return '=?UTF-8?B?' . base64_encode($subject) . '?=';
 }
 
-function sendEmailToRecipients(array $recipients, string $subject, string $message): int
+function sendEmailToRecipientsDetailed(array $recipients, string $subject, string $message): array
 {
     if ($recipients === []) {
-        return 0;
+        return [
+            'sent_count' => 0,
+            'from' => '',
+            'results' => [],
+            'last_error' => null,
+        ];
     }
 
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $from = 'monitor@' . preg_replace('/[^a-z0-9\.\-]/i', '', $host);
     $headers = "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
-    $headers .= "From: monitor@" . preg_replace('/[^a-z0-9\.\-]/i', '', $host) . "\r\n";
+    $headers .= "From: " . $from . "\r\n";
 
     $sentCount = 0;
+    $results = [];
+    $lastErrorText = null;
     foreach ($recipients as $recipient) {
-        if (@mail($recipient, $subject, $message, $headers)) {
+        $ok = @mail($recipient, $subject, $message, $headers);
+        if ($ok) {
             $sentCount++;
+            $results[] = ['recipient' => $recipient, 'ok' => true, 'error' => null];
+            continue;
         }
+
+        $err = error_get_last();
+        $errorText = is_array($err) && isset($err['message']) ? (string) $err['message'] : 'unknown';
+        $results[] = ['recipient' => $recipient, 'ok' => false, 'error' => $errorText];
+        $lastErrorText = $errorText;
     }
 
-    return $sentCount;
+    return [
+        'sent_count' => $sentCount,
+        'from' => $from,
+        'results' => $results,
+        'last_error' => $lastErrorText,
+    ];
+}
+
+function sendEmailToRecipients(array $recipients, string $subject, string $message): int
+{
+    $details = sendEmailToRecipientsDetailed($recipients, $subject, $message);
+    return (int) ($details['sent_count'] ?? 0);
 }
 
 function sendTestEmailAlert(PDO $pdo, string $now): array
@@ -176,12 +203,21 @@ function sendTestEmailAlert(PDO $pdo, string $now): array
         . 'Получатели: ' . implode(', ', $recipients) . "\n\n"
         . "Если письмо получено, значит email-уведомления работают.";
 
-    $sentCount = sendEmailToRecipients($recipients, $subject, $message);
+    $details = sendEmailToRecipientsDetailed($recipients, $subject, $message);
+    $sentCount = (int) ($details['sent_count'] ?? 0);
     if ($sentCount === 0) {
-        return ['ok' => false, 'error' => 'Не удалось отправить тестовое письмо. Проверьте почтовые настройки сервера.'];
+        return [
+            'ok' => false,
+            'error' => 'Не удалось отправить тестовое письмо. Проверьте почтовые настройки сервера.',
+            'details' => $details,
+        ];
     }
 
-    return ['ok' => true, 'sent_count' => $sentCount];
+    return [
+        'ok' => true,
+        'sent_count' => $sentCount,
+        'details' => $details,
+    ];
 }
 
 function sendDownEmailAlertIfNeeded(PDO $pdo, int $siteId, array $checkResult, string $now): void
