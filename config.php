@@ -11,6 +11,22 @@ return [
     'checks' => [
         'interval_minutes' => 60,
     ],
+    'alerts' => [
+        'down_failures_threshold' => 2,
+        'up_success_threshold' => 2,
+    ],
+    'smtp' => [
+        'enabled' => false,
+        'host' => '',
+        'port' => 587,
+        'secure' => 'tls', // tls, ssl, none
+        'username' => '',
+        'password' => '',
+        'from_email' => 'monitor@downdetector.na4u.ru',
+        'from_name' => 'Downdetector Monitor',
+        'reply_to' => '',
+        'timeout' => 10,
+    ],
     'auth' => [
         'settings_password' => 'admin123',
     ],

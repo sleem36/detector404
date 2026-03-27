@@ -70,6 +70,21 @@ function initDb(PDO $pdo): void
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )'
     );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            site_id INTEGER NOT NULL,
+            started_at DATETIME NOT NULL,
+            resolved_at DATETIME,
+            duration_seconds INTEGER,
+            status TEXT NOT NULL DEFAULT "open",
+            start_status_code INTEGER,
+            end_status_code INTEGER,
+            FOREIGN KEY(site_id) REFERENCES sites(id) ON DELETE CASCADE
+        )'
+    );
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_incidents_site_status ON incidents(site_id, status)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_incidents_started_at ON incidents(started_at)');
 }
 
 function seedSites(PDO $pdo): void
