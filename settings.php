@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 session_start();
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/settings_actions.php';
+require_once __DIR__ . '/includes/settings_view.php';
 
 $pdo = db();
 $authError = null;
@@ -30,67 +32,16 @@ if (!$isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['act
 
 if ($isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
-    if ($action === 'add_site') {
-        $name = (string) ($_POST['name'] ?? '');
-        $url = (string) ($_POST['url'] ?? '');
-        $result = addSite($pdo, $name, $url);
-        if ($result['ok'] === true) {
-            $formSuccess = 'Сайт добавлен';
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка добавления');
+    $result = runSettingsAction($pdo, $action);
+    if ($result !== null) {
+        if (array_key_exists('mailDiagnostics', $result)) {
+            $mailDiagnostics = $result['mailDiagnostics'];
         }
-    } elseif ($action === 'delete_site') {
-        $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
-        $result = deleteSite($pdo, (int) $siteId);
-        if ($result['ok'] === true) {
-            $formSuccess = 'Сайт удален';
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка удаления');
+        if (isset($result['success'])) {
+            $formSuccess = (string) $result['success'];
         }
-    } elseif ($action === 'update_site') {
-        $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
-        $name = (string) ($_POST['name'] ?? '');
-        $url = (string) ($_POST['url'] ?? '');
-        $result = updateSite($pdo, (int) $siteId, $name, $url);
-        if ($result['ok'] === true) {
-            $formSuccess = 'Сайт обновлен';
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка обновления');
-        }
-    } elseif ($action === 'run_check') {
-        $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
-        $result = runSiteCheck($pdo, (int) $siteId);
-        if ($result['ok'] === true) {
-            $statusText = $result['status_code'] !== null ? ('HTTP ' . (int) $result['status_code']) : 'нет HTTP кода';
-            $timeText = $result['response_time_ms'] !== null ? ((string) $result['response_time_ms'] . ' ms') : '—';
-            $formSuccess = 'Проверка выполнена: ' . $statusText . ', отклик ' . $timeText;
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка проверки');
-        }
-    } elseif ($action === 'update_interval') {
-        $interval = filter_input(INPUT_POST, 'interval_minutes', FILTER_VALIDATE_INT);
-        $result = setCheckIntervalMinutes($pdo, (int) $interval);
-        if ($result['ok'] === true) {
-            $formSuccess = 'Интервал проверок обновлен';
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка сохранения интервала');
-        }
-    } elseif ($action === 'update_alert_emails') {
-        $emailsRaw = (string) ($_POST['alert_emails'] ?? '');
-        $result = setAlertEmailRecipients($pdo, $emailsRaw);
-        if ($result['ok'] === true) {
-            $formSuccess = 'Email-уведомления обновлены';
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка сохранения email-уведомлений');
-        }
-    } elseif ($action === 'test_alert_emails') {
-        $result = sendTestEmailAlert($pdo, nowUtc());
-        $mailDiagnostics = $result['details'] ?? null;
-        if ($result['ok'] === true) {
-            $count = (int) ($result['sent_count'] ?? 0);
-            $formSuccess = 'Тестовое письмо отправлено. Успешно: ' . $count;
-        } else {
-            $formError = (string) ($result['error'] ?? 'Ошибка отправки тестового письма');
+        if (isset($result['error'])) {
+            $formError = (string) $result['error'];
         }
     }
 }
@@ -183,32 +134,7 @@ $intervalOptions = [
                 <input type="hidden" name="action" value="test_alert_emails">
                 <button type="submit">Тест почты</button>
             </form>
-            <?php if ($mailDiagnostics !== null): ?>
-                <div class="mail-log">
-                    <div><strong>Диагностика отправки</strong></div>
-                    <div><small>Транспорт: <?= e((string) ($mailDiagnostics['transport'] ?? 'mail')) ?></small></div>
-                    <div><small>From: <?= e((string) ($mailDiagnostics['from'] ?? '')) ?></small></div>
-                    <?php if (isset($mailDiagnostics['results']) && is_array($mailDiagnostics['results'])): ?>
-                        <?php foreach ($mailDiagnostics['results'] as $item): ?>
-                            <?php
-                            $ok = (bool) ($item['ok'] ?? false);
-                            $recipient = (string) ($item['recipient'] ?? '');
-                            $error = (string) ($item['error'] ?? '');
-                            ?>
-                            <div>
-                                <small>
-                                    <?= $ok ? 'OK' : 'FAIL' ?> — <?= e($recipient) ?>
-                                    <?= $error !== '' ? (' | ' . e($error)) : '' ?>
-                                </small>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                    <?php if (!empty($mailDiagnostics['last_error'])): ?>
-                        <div><small>Последняя ошибка: <?= e((string) $mailDiagnostics['last_error']) ?></small></div>
-                    <?php endif; ?>
-                    <div><small>Важно: успешная отправка означает принятие почтовым сервером, но не гарантирует доставку во входящие.</small></div>
-                </div>
-            <?php endif; ?>
+            <?php renderMailDiagnostics($mailDiagnostics); ?>
         </section>
 
         <section class="card">

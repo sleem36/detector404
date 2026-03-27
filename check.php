@@ -23,7 +23,7 @@ foreach ($sites as $site) {
     $siteId = (int) $site['id'];
     $result = runSiteCheck($pdo, $siteId);
     if (($result['ok'] ?? false) === true) {
-        sendDownEmailAlertIfNeeded($pdo, $siteId, $result, $now);
+        processAlertsAfterCheck($pdo, $siteId, $result, $now);
     }
 }
 

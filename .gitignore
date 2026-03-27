@@ -1,3 +1,4 @@
 db/monitor.db
 *.zip
 DEPLOY_LOCAL.md
+.env
