@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/functions.php';
 
+$pdo = db();
 $siteId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$siteId) {
     http_response_code(400);
@@ -10,7 +11,7 @@ if (!$siteId) {
     exit;
 }
 
-$site = getSiteById(db(), (int) $siteId);
+$site = getSiteById($pdo, (int) $siteId);
 if (!$site) {
     http_response_code(404);
     echo 'Сайт не найден';
@@ -28,10 +29,15 @@ if (!$site) {
 </head>
 <body>
 <main class="container">
-    <header class="page-header">
-        <h1><?= e($site['name']) ?></h1>
-        <p><a href="<?= e($site['url']) ?>" target="_blank" rel="noopener noreferrer"><?= e($site['url']) ?></a></p>
-        <p><a href="index.php">← К списку сайтов</a></p>
+    <header class="page-header with-actions">
+        <div>
+            <h1><?= e($site['name']) ?></h1>
+            <p><a href="<?= e($site['url']) ?>" target="_blank" rel="noopener noreferrer"><?= e($site['url']) ?></a></p>
+            <p><a href="index.php">← К списку сайтов</a></p>
+        </div>
+        <div class="top-actions">
+            <a class="settings-btn" href="settings.php">Настройки</a>
+        </div>
     </header>
 
     <section class="card">

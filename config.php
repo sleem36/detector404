@@ -8,6 +8,9 @@ return [
         'connect_timeout' => 10,
         'user_agent' => 'Detector404/1.0 (+local-monitor)',
     ],
+    'auth' => [
+        'settings_password' => 'admin123',
+    ],
     'sites' => [
         ['name' => 'Crystal Motors', 'url' => 'https://crystal-motors.ru/'],
         ['name' => 'Autocred1 Barnaul', 'url' => 'https://barnaul.autocred1.ru/'],

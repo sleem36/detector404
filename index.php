@@ -2,7 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/includes/functions.php';
-$sites = getSitesWithStats(db());
+$pdo = db();
+$sites = getSitesWithStats($pdo);
 ?>
 <!doctype html>
 <html lang="ru">
@@ -15,9 +16,14 @@ $sites = getSitesWithStats(db());
 </head>
 <body>
 <main class="container">
-    <header class="page-header">
-        <h1>Мониторинг доступности сайтов</h1>
-        <p>Последние проверки и средний отклик за 24 часа.</p>
+    <header class="page-header with-actions">
+        <div>
+            <h1>Мониторинг доступности сайтов</h1>
+            <p>Последние проверки и средний отклик за 24 часа.</p>
+        </div>
+        <div class="top-actions">
+            <a class="settings-btn" href="settings.php">Настройки</a>
+        </div>
     </header>
 
     <section class="card">
