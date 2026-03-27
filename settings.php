@@ -47,6 +47,7 @@ if ($isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $sites = $isAuthed ? getSitesWithStats($pdo) : [];
+$tzLabel = displayTimezoneLabel();
 $currentInterval = $isAuthed ? getCheckIntervalMinutes($pdo) : 60;
 $alertEmailsRaw = $isAuthed ? getAlertEmailRecipientsRaw($pdo) : '';
 $intervalOptions = [
@@ -166,7 +167,7 @@ $intervalOptions = [
                 <tr>
                     <th>Редактирование</th>
                     <th>Текущий URL</th>
-                    <th>Последняя проверка</th>
+                    <th>Последняя проверка (<?= e($tzLabel) ?>)</th>
                     <th>Действие</th>
                 </tr>
                 </thead>
@@ -183,7 +184,7 @@ $intervalOptions = [
                             </form>
                         </td>
                         <td><small><?= e($site['url']) ?></small></td>
-                        <td><small><?= e((string) ($site['last_checked_at'] ?? '—')) ?></small></td>
+                        <td><small><?= e(formatUtcForUi(isset($site['last_checked_at']) ? (string) $site['last_checked_at'] : null)) ?></small></td>
                         <td class="actions-cell">
                             <form method="post" class="inline-form">
                                 <input type="hidden" name="action" value="run_check">

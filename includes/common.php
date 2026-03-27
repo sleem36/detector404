@@ -11,6 +11,35 @@ function nowUtc(): string
     return (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
 }
 
+function appDisplayTimezone(): DateTimeZone
+{
+    $name = (string) (appConfig()['ui']['timezone'] ?? 'Europe/Moscow');
+    try {
+        return new DateTimeZone($name);
+    } catch (Exception) {
+        return new DateTimeZone('UTC');
+    }
+}
+
+function displayTimezoneLabel(): string
+{
+    return appDisplayTimezone()->getName();
+}
+
+function formatUtcForUi(?string $utcDateTime): string
+{
+    if ($utcDateTime === null || trim($utcDateTime) === '') {
+        return '—';
+    }
+
+    try {
+        $utc = new DateTimeImmutable($utcDateTime, new DateTimeZone('UTC'));
+        return $utc->setTimezone(appDisplayTimezone())->format('Y-m-d H:i:s');
+    } catch (Exception) {
+        return $utcDateTime;
+    }
+}
+
 function periodStart(string $period): DateTimeImmutable
 {
     $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));

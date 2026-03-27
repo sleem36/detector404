@@ -143,6 +143,11 @@ function applyEnvOverrides(array $config): array
         $config['smtp']['timeout'] = $smtpTimeout;
     }
 
+    $uiTimezone = envValue('APP_TIMEZONE');
+    if ($uiTimezone !== null && trim($uiTimezone) !== '') {
+        $config['ui']['timezone'] = trim($uiTimezone);
+    }
+
     return $config;
 }
 

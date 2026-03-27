@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/functions.php';
 $pdo = db();
 $sites = getSitesWithStats($pdo);
+$tzLabel = displayTimezoneLabel();
 ?>
 <!doctype html>
 <html lang="ru">
@@ -32,7 +33,7 @@ $sites = getSitesWithStats($pdo);
             <tr>
                 <th>Сайт</th>
                 <th>Статус</th>
-                <th>Последняя проверка (UTC)</th>
+                <th>Последняя проверка (<?= e($tzLabel) ?>)</th>
                 <th>Средний отклик 24ч (ms)</th>
             </tr>
             </thead>
@@ -53,7 +54,7 @@ $sites = getSitesWithStats($pdo);
                         </span>
                         <div><small><?= e($statusText) ?></small></div>
                     </td>
-                    <td><?= e((string) ($site['last_checked_at'] ?? '—')) ?></td>
+                    <td><?= e(formatUtcForUi(isset($site['last_checked_at']) ? (string) $site['last_checked_at'] : null)) ?></td>
                     <td><?= e((string) ($site['avg_response_time_24h'] ?? '—')) ?></td>
                 </tr>
             <?php endforeach; ?>

@@ -30,6 +30,9 @@ return [
     'auth' => [
         'settings_password' => 'admin123',
     ],
+    'ui' => [
+        'timezone' => 'Europe/Moscow',
+    ],
     'sites' => [
         ['name' => 'Crystal Motors', 'url' => 'https://crystal-motors.ru/'],
         ['name' => 'Autocred1 Barnaul', 'url' => 'https://barnaul.autocred1.ru/'],
