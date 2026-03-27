@@ -42,6 +42,11 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true
