@@ -66,10 +66,29 @@ if ($isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $formError = (string) ($result['error'] ?? 'Ошибка проверки');
         }
+    } elseif ($action === 'update_interval') {
+        $interval = filter_input(INPUT_POST, 'interval_minutes', FILTER_VALIDATE_INT);
+        $result = setCheckIntervalMinutes($pdo, (int) $interval);
+        if ($result['ok'] === true) {
+            $formSuccess = 'Интервал проверок обновлен';
+        } else {
+            $formError = (string) ($result['error'] ?? 'Ошибка сохранения интервала');
+        }
     }
 }
 
 $sites = $isAuthed ? getSitesWithStats($pdo) : [];
+$currentInterval = $isAuthed ? getCheckIntervalMinutes($pdo) : 60;
+$intervalOptions = [
+    0 => 'Отключено',
+    1 => '1 мин',
+    5 => '5 мин',
+    10 => '10 мин',
+    15 => '15 мин',
+    30 => '30 мин',
+    60 => '60 мин (1 час)',
+    1440 => '24 часа',
+];
 ?>
 <!doctype html>
 <html lang="ru">
@@ -111,6 +130,25 @@ $sites = $isAuthed ? getSitesWithStats($pdo) : [];
             </form>
         </section>
     <?php else: ?>
+        <section class="card">
+            <h2>Интервал авто-проверок</h2>
+            <form method="post" class="inline-form">
+                <input type="hidden" name="action" value="update_interval">
+                <label>
+                    Интервал
+                    <select name="interval_minutes" required>
+                        <?php foreach ($intervalOptions as $option => $title): ?>
+                            <option value="<?= $option ?>" <?= $currentInterval === $option ? 'selected' : '' ?>>
+                                <?= e($title) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <button type="submit">Сохранить</button>
+            </form>
+            <p><small>Рекомендуется запускать системный cron каждую минуту, интервал управляется здесь.</small></p>
+        </section>
+
         <section class="card">
             <h2>Добавить сайт</h2>
             <?php if ($formError !== null): ?>

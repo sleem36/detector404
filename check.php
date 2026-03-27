@@ -6,6 +6,18 @@ require_once __DIR__ . '/includes/functions.php';
 $pdo = db();
 $now = nowUtc();
 
+if (!shouldRunScheduledChecks($pdo, $now)) {
+    if (PHP_SAPI === 'cli') {
+        $interval = getCheckIntervalMinutes($pdo);
+        if ($interval === 0) {
+            echo "Skipped at {$now}, auto-checks disabled" . PHP_EOL;
+        } else {
+            echo "Skipped at {$now}, interval {$interval} min" . PHP_EOL;
+        }
+    }
+    exit;
+}
+
 $sites = $pdo->query('SELECT id FROM sites ORDER BY id ASC')->fetchAll();
 foreach ($sites as $site) {
     runSiteCheck($pdo, (int) $site['id']);

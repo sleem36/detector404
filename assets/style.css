@@ -128,6 +128,7 @@ button:hover,
 .add-site-form input,
 .inline-form input[type="text"],
 .inline-form input[type="url"],
+.inline-form select,
 .add-site-form input[type="password"] {
     border: 1px solid rgba(132, 147, 201, 0.46);
     background: rgba(9, 14, 31, 0.88);
@@ -140,7 +141,8 @@ button:hover,
 }
 
 .add-site-form input:focus,
-.inline-form input:focus {
+.inline-form input:focus,
+.inline-form select:focus {
     border-color: var(--primary-2);
     box-shadow: 0 0 0 3px rgba(107, 224, 255, 0.2);
 }

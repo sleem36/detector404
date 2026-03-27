@@ -8,6 +8,9 @@ return [
         'connect_timeout' => 10,
         'user_agent' => 'Detector404/1.0 (+local-monitor)',
     ],
+    'checks' => [
+        'interval_minutes' => 60,
+    ],
     'auth' => [
         'settings_password' => 'admin123',
     ],
