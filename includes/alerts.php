@@ -6,12 +6,6 @@ function processAlertsAfterCheck(PDO $pdo, int $siteId, array $checkResult, stri
     processSiteAlertState($pdo, $siteId, $checkResult, $now);
 }
 
-// Backward-compatible alias; keep while older callers may exist.
-function sendDownEmailAlertIfNeeded(PDO $pdo, int $siteId, array $checkResult, string $now): void
-{
-    processAlertsAfterCheck($pdo, $siteId, $checkResult, $now);
-}
-
 function getOpenIncidentBySite(PDO $pdo, int $siteId): ?array
 {
     $stmt = $pdo->prepare('SELECT id, started_at FROM incidents WHERE site_id = :site_id AND status = "open" ORDER BY id DESC LIMIT 1');
