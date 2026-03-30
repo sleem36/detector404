@@ -31,7 +31,7 @@ return [
         'settings_password' => 'admin123',
     ],
     'ui' => [
-        'timezone' => 'Europe/Moscow',
+        'timezone' => 'Europe/Yekaterinburg',
     ],
     'sites' => [
         ['name' => 'Crystal Motors', 'url' => 'https://crystal-motors.ru/'],
