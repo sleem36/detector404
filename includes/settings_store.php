@@ -114,3 +114,112 @@ function setAlertEmailRecipients(PDO $pdo, string $raw): array
     setSetting($pdo, 'alert_email_recipients', implode(',', $emails));
     return ['ok' => true];
 }
+
+function normalizeTelegramRecipients(string $raw): array
+{
+    $parts = preg_split('/[,;\s]+/', trim($raw)) ?: [];
+    $recipients = [];
+    foreach ($parts as $part) {
+        $id = trim($part);
+        if ($id === '') {
+            continue;
+        }
+        $recipients[] = $id;
+    }
+
+    return array_values(array_unique($recipients));
+}
+
+function getAlertTelegramRecipientsRaw(PDO $pdo): string
+{
+    return (string) getSetting($pdo, 'alert_telegram_recipients', '');
+}
+
+function getAlertTelegramRecipients(PDO $pdo): array
+{
+    return normalizeTelegramRecipients(getAlertTelegramRecipientsRaw($pdo));
+}
+
+function isTelegramRecipientValid(string $recipient): bool
+{
+    if ($recipient === '') {
+        return false;
+    }
+
+    // Numeric chat_id (user/group/channel), optionally negative for groups.
+    if (preg_match('/^-?\d+$/', $recipient) === 1) {
+        return true;
+    }
+
+    // Channel/public username form: @name
+    return preg_match('/^@[a-zA-Z0-9_]{5,}$/', $recipient) === 1;
+}
+
+function setAlertTelegramRecipients(PDO $pdo, string $raw): array
+{
+    $recipients = normalizeTelegramRecipients($raw);
+    foreach ($recipients as $recipient) {
+        if (!isTelegramRecipientValid($recipient)) {
+            return ['ok' => false, 'error' => 'В списке есть некорректный Telegram chat_id/username: ' . $recipient];
+        }
+    }
+
+    setSetting($pdo, 'alert_telegram_recipients', implode(',', $recipients));
+    return ['ok' => true];
+}
+
+function recheckPendingKey(int $siteId): string
+{
+    return 'site_recheck_pending_' . $siteId;
+}
+
+function recheckDueKey(int $siteId): string
+{
+    return 'site_recheck_due_' . $siteId;
+}
+
+function scheduleSiteRecheck(PDO $pdo, int $siteId, string $now, int $delayMinutes = 2): void
+{
+    if ($delayMinutes < 1) {
+        $delayMinutes = 1;
+    }
+
+    try {
+        $dueAt = (new DateTimeImmutable($now, new DateTimeZone('UTC')))
+            ->add(new DateInterval('PT' . $delayMinutes . 'M'))
+            ->format('Y-m-d H:i:s');
+    } catch (Exception) {
+        $dueAt = $now;
+    }
+
+    setSetting($pdo, recheckPendingKey($siteId), '1');
+    setSetting($pdo, recheckDueKey($siteId), $dueAt);
+}
+
+function clearSiteRecheck(PDO $pdo, int $siteId): void
+{
+    setSetting($pdo, recheckPendingKey($siteId), '0');
+    setSetting($pdo, recheckDueKey($siteId), '');
+}
+
+function isSiteRecheckDue(PDO $pdo, int $siteId, string $now): bool
+{
+    $pending = (int) getSetting($pdo, recheckPendingKey($siteId), '0') === 1;
+    if (!$pending) {
+        return false;
+    }
+
+    $dueAt = (string) getSetting($pdo, recheckDueKey($siteId), '');
+    if ($dueAt === '') {
+        return false;
+    }
+
+    try {
+        $nowDt = new DateTimeImmutable($now, new DateTimeZone('UTC'));
+        $dueDt = new DateTimeImmutable($dueAt, new DateTimeZone('UTC'));
+    } catch (Exception) {
+        return false;
+    }
+
+    return $nowDt >= $dueDt;
+}

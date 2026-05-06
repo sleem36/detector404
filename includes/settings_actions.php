@@ -14,8 +14,8 @@ function runSettingsAction(PDO $pdo, string $action): ?array
     $handlers = [
         'add_site' => static function () use ($pdo): array {
             $name = (string) ($_POST['name'] ?? '');
-            $url = (string) ($_POST['url'] ?? '');
-            return flashFromOperationResult(addSite($pdo, $name, $url), 'Сайт добавлен', 'Ошибка добавления');
+            $endpointsRaw = (string) ($_POST['endpoints'] ?? '');
+            return flashFromOperationResult(addSite($pdo, $name, $endpointsRaw), 'Сайт добавлен', 'Ошибка добавления');
         },
         'delete_site' => static function () use ($pdo): array {
             $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
@@ -24,8 +24,8 @@ function runSettingsAction(PDO $pdo, string $action): ?array
         'update_site' => static function () use ($pdo): array {
             $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
             $name = (string) ($_POST['name'] ?? '');
-            $url = (string) ($_POST['url'] ?? '');
-            return flashFromOperationResult(updateSite($pdo, (int) $siteId, $name, $url), 'Сайт обновлен', 'Ошибка обновления');
+            $endpointsRaw = (string) ($_POST['endpoints'] ?? '');
+            return flashFromOperationResult(updateSite($pdo, (int) $siteId, $name, $endpointsRaw), 'Сайт обновлен', 'Ошибка обновления');
         },
         'run_check' => static function () use ($pdo): array {
             $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
@@ -36,7 +36,24 @@ function runSettingsAction(PDO $pdo, string $action): ?array
 
             $statusText = $result['status_code'] !== null ? ('HTTP ' . (int) $result['status_code']) : 'нет HTTP кода';
             $timeText = $result['response_time_ms'] !== null ? ((string) $result['response_time_ms'] . ' ms') : '—';
-            return ['success' => 'Проверка выполнена: ' . $statusText . ', отклик ' . $timeText];
+            $checkedCount = (int) ($result['checked_endpoints_count'] ?? 0);
+            $failedCount = is_array($result['failed_endpoints'] ?? null) ? count($result['failed_endpoints']) : 0;
+            $message = 'Проверка выполнена: ' . $statusText . ', отклик ' . $timeText . ', ссылок ' . $checkedCount . ', ошибок ' . $failedCount;
+            if ($failedCount > 0) {
+                $chunks = [];
+                foreach ((array) $result['failed_endpoints'] as $failed) {
+                    $url = trim((string) ($failed['url'] ?? ''));
+                    if ($url === '') {
+                        continue;
+                    }
+                    $code = $failed['status_code'] !== null ? ('HTTP ' . (int) $failed['status_code']) : 'нет HTTP-кода';
+                    $chunks[] = $url . ' (' . $code . ')';
+                }
+                if ($chunks !== []) {
+                    $message .= '. Ошибки: ' . implode('; ', $chunks);
+                }
+            }
+            return ['success' => $message];
         },
         'update_interval' => static function () use ($pdo): array {
             $interval = filter_input(INPUT_POST, 'interval_minutes', FILTER_VALIDATE_INT);
@@ -54,6 +71,14 @@ function runSettingsAction(PDO $pdo, string $action): ?array
                 'Ошибка сохранения email-уведомлений'
             );
         },
+        'update_alert_telegrams' => static function () use ($pdo): array {
+            $telegramsRaw = (string) ($_POST['alert_telegrams'] ?? '');
+            return flashFromOperationResult(
+                setAlertTelegramRecipients($pdo, $telegramsRaw),
+                'Telegram-уведомления обновлены',
+                'Ошибка сохранения Telegram-уведомлений'
+            );
+        },
         'test_alert_emails' => static function () use ($pdo): array {
             $result = sendTestEmailAlert($pdo, nowUtc());
             $payload = ['mailDiagnostics' => ($result['details'] ?? null)];
@@ -63,6 +88,17 @@ function runSettingsAction(PDO $pdo, string $action): ?array
                 return $payload;
             }
             $payload['error'] = (string) ($result['error'] ?? 'Ошибка отправки тестового письма');
+            return $payload;
+        },
+        'test_alert_telegrams' => static function () use ($pdo): array {
+            $result = sendTestTelegramAlert($pdo, nowUtc());
+            $payload = ['telegramDiagnostics' => ($result['details'] ?? null)];
+            if ($result['ok'] === true) {
+                $count = (int) ($result['sent_count'] ?? 0);
+                $payload['success'] = 'Тестовое Telegram-сообщение отправлено. Успешно: ' . $count;
+                return $payload;
+            }
+            $payload['error'] = (string) ($result['error'] ?? 'Ошибка отправки тестового Telegram-сообщения');
             return $payload;
         },
     ];

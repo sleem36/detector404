@@ -292,6 +292,101 @@ function sendEmailToRecipients(array $recipients, string $subject, string $messa
     return (int) ($details['sent_count'] ?? 0);
 }
 
+function telegramConfig(): array
+{
+    $cfg = appConfig()['telegram'] ?? [];
+    return [
+        'enabled' => (bool) ($cfg['enabled'] ?? false),
+        'bot_token' => (string) ($cfg['bot_token'] ?? ''),
+        'timeout' => (int) ($cfg['timeout'] ?? 10),
+        'api_base' => (string) ($cfg['api_base'] ?? 'https://api.telegram.org'),
+    ];
+}
+
+function sendTelegramToRecipientsDetailed(array $recipients, string $message): array
+{
+    $cfg = telegramConfig();
+    $results = [];
+    $sentCount = 0;
+    $lastError = null;
+
+    if ($recipients === []) {
+        return [
+            'sent_count' => 0,
+            'transport' => 'telegram',
+            'results' => [],
+            'last_error' => null,
+        ];
+    }
+
+    if (!$cfg['enabled'] || trim($cfg['bot_token']) === '') {
+        $err = 'Telegram disabled or bot token is empty';
+        foreach ($recipients as $recipient) {
+            $results[] = ['recipient' => $recipient, 'ok' => false, 'error' => $err];
+        }
+        return [
+            'sent_count' => 0,
+            'transport' => 'telegram',
+            'results' => $results,
+            'last_error' => $err,
+        ];
+    }
+
+    $timeout = max(1, (int) $cfg['timeout']);
+    $token = rawurlencode(trim($cfg['bot_token']));
+    $apiBase = rtrim($cfg['api_base'], '/');
+
+    foreach ($recipients as $recipient) {
+        $url = $apiBase . '/bot' . $token . '/sendMessage?' . http_build_query([
+            'chat_id' => $recipient,
+            'text' => $message,
+            'disable_web_page_preview' => '1',
+        ]);
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => $timeout,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $raw = @file_get_contents($url, false, $context);
+        if ($raw === false) {
+            $err = error_get_last();
+            $errorText = is_array($err) && isset($err['message']) ? (string) $err['message'] : 'request failed';
+            $results[] = ['recipient' => $recipient, 'ok' => false, 'error' => $errorText];
+            $lastError = $errorText;
+            continue;
+        }
+
+        $decoded = json_decode($raw, true);
+        $ok = is_array($decoded) && (($decoded['ok'] ?? false) === true);
+        if (!$ok) {
+            $description = is_array($decoded) ? (string) ($decoded['description'] ?? 'telegram api error') : 'telegram api error';
+            $results[] = ['recipient' => $recipient, 'ok' => false, 'error' => $description];
+            $lastError = $description;
+            continue;
+        }
+
+        $sentCount++;
+        $results[] = ['recipient' => $recipient, 'ok' => true, 'error' => null];
+    }
+
+    return [
+        'sent_count' => $sentCount,
+        'transport' => 'telegram',
+        'results' => $results,
+        'last_error' => $lastError,
+    ];
+}
+
+function sendTelegramToRecipients(array $recipients, string $message): int
+{
+    $details = sendTelegramToRecipientsDetailed($recipients, $message);
+    return (int) ($details['sent_count'] ?? 0);
+}
+
 function sendTestEmailAlert(PDO $pdo, string $now): array
 {
     $recipients = getAlertEmailRecipients($pdo);
@@ -311,6 +406,35 @@ function sendTestEmailAlert(PDO $pdo, string $now): array
         return [
             'ok' => false,
             'error' => 'Не удалось отправить тестовое письмо. Проверьте почтовые настройки сервера.',
+            'details' => $details,
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'sent_count' => $sentCount,
+        'details' => $details,
+    ];
+}
+
+function sendTestTelegramAlert(PDO $pdo, string $now): array
+{
+    $recipients = getAlertTelegramRecipients($pdo);
+    if ($recipients === []) {
+        return ['ok' => false, 'error' => 'Список Telegram chat_id/username пуст. Сначала сохраните хотя бы один адрес.'];
+    }
+
+    $message = "Тест уведомлений мониторинга\n\n"
+        . 'Время (UTC): ' . $now . "\n"
+        . 'Получатели: ' . implode(', ', $recipients) . "\n\n"
+        . 'Если сообщение получено, значит Telegram-уведомления работают.';
+
+    $details = sendTelegramToRecipientsDetailed($recipients, $message);
+    $sentCount = (int) ($details['sent_count'] ?? 0);
+    if ($sentCount === 0) {
+        return [
+            'ok' => false,
+            'error' => 'Не удалось отправить тестовое Telegram-сообщение. Проверьте токен бота и chat_id.',
             'details' => $details,
         ];
     }

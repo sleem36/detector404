@@ -27,6 +27,12 @@ return [
         'reply_to' => '',
         'timeout' => 10,
     ],
+    'telegram' => [
+        'enabled' => false,
+        'bot_token' => '',
+        'timeout' => 10,
+        'api_base' => 'https://api.telegram.org',
+    ],
     'auth' => [
         'settings_password' => 'admin123',
     ],

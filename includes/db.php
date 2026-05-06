@@ -148,6 +148,26 @@ function applyEnvOverrides(array $config): array
         $config['ui']['timezone'] = trim($uiTimezone);
     }
 
+    $telegramEnabled = envBool('TELEGRAM_ENABLED', null);
+    if ($telegramEnabled !== null) {
+        $config['telegram']['enabled'] = $telegramEnabled;
+    }
+
+    $telegramToken = envValue('TELEGRAM_BOT_TOKEN');
+    if ($telegramToken !== null) {
+        $config['telegram']['bot_token'] = $telegramToken;
+    }
+
+    $telegramTimeout = envInt('TELEGRAM_TIMEOUT', null);
+    if ($telegramTimeout !== null) {
+        $config['telegram']['timeout'] = $telegramTimeout;
+    }
+
+    $telegramApiBase = envValue('TELEGRAM_API_BASE');
+    if ($telegramApiBase !== null && trim($telegramApiBase) !== '') {
+        $config['telegram']['api_base'] = rtrim(trim($telegramApiBase), '/');
+    }
+
     return $config;
 }
 
@@ -184,6 +204,7 @@ function db(): PDO
 
     initDb($pdo);
     seedSites($pdo);
+    seedSiteEndpoints($pdo);
     seedSettings($pdo);
 
     return $pdo;
@@ -204,14 +225,43 @@ function initDb(PDO $pdo): void
         'CREATE TABLE IF NOT EXISTS checks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             site_id INTEGER NOT NULL,
+            endpoint_id INTEGER,
             timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             status_code INTEGER,
             response_time_ms INTEGER,
             is_available INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY(site_id) REFERENCES sites(id) ON DELETE CASCADE
+            FOREIGN KEY(site_id) REFERENCES sites(id) ON DELETE CASCADE,
+            FOREIGN KEY(endpoint_id) REFERENCES site_endpoints(id) ON DELETE CASCADE
         )'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS site_endpoints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            site_id INTEGER NOT NULL,
+            url TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(site_id) REFERENCES sites(id) ON DELETE CASCADE,
+            UNIQUE(site_id, url)
+        )'
+    );
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_site_endpoints_site ON site_endpoints(site_id)');
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS endpoint_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            site_id INTEGER NOT NULL,
+            endpoint_id INTEGER NOT NULL,
+            timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            status_code INTEGER,
+            response_time_ms INTEGER,
+            is_available INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(site_id) REFERENCES sites(id) ON DELETE CASCADE,
+            FOREIGN KEY(endpoint_id) REFERENCES site_endpoints(id) ON DELETE CASCADE
+        )'
+    );
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_endpoint_checks_site_time ON endpoint_checks(site_id, timestamp)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_endpoint_checks_endpoint_time ON endpoint_checks(endpoint_id, timestamp)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_checks_site_time ON checks(site_id, timestamp)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_checks_time ON checks(timestamp)');
     $pdo->exec(
@@ -236,6 +286,43 @@ function initDb(PDO $pdo): void
     );
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_incidents_site_status ON incidents(site_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_incidents_started_at ON incidents(started_at)');
+    ensureChecksEndpointColumn($pdo);
+}
+
+function ensureChecksEndpointColumn(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(checks)')->fetchAll();
+    foreach ($columns as $column) {
+        if ((string) ($column['name'] ?? '') === 'endpoint_id') {
+            return;
+        }
+    }
+    $pdo->exec('ALTER TABLE checks ADD COLUMN endpoint_id INTEGER');
+}
+
+function seedSiteEndpoints(PDO $pdo): void
+{
+    $sites = $pdo->query('SELECT id, url FROM sites')->fetchAll();
+    if (!is_array($sites) || $sites === []) {
+        return;
+    }
+
+    $insertStmt = $pdo->prepare(
+        'INSERT INTO site_endpoints(site_id, url, is_active, created_at)
+         VALUES(:site_id, :url, 1, CURRENT_TIMESTAMP)
+         ON CONFLICT(site_id, url) DO NOTHING'
+    );
+
+    foreach ($sites as $site) {
+        $url = trim((string) ($site['url'] ?? ''));
+        if ($url === '') {
+            continue;
+        }
+        $insertStmt->execute([
+            ':site_id' => (int) $site['id'],
+            ':url' => $url,
+        ]);
+    }
 }
 
 function seedSites(PDO $pdo): void

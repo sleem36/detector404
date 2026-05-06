@@ -33,3 +33,35 @@ function renderMailDiagnostics(?array $mailDiagnostics): void
     </div>
     <?php
 }
+
+function renderTelegramDiagnostics(?array $telegramDiagnostics): void
+{
+    if ($telegramDiagnostics === null) {
+        return;
+    }
+    ?>
+    <div class="mail-log">
+        <div><strong>Диагностика Telegram</strong></div>
+        <div><small>Транспорт: <?= e((string) ($telegramDiagnostics['transport'] ?? 'telegram')) ?></small></div>
+        <?php if (isset($telegramDiagnostics['results']) && is_array($telegramDiagnostics['results'])): ?>
+            <?php foreach ($telegramDiagnostics['results'] as $item): ?>
+                <?php
+                $ok = (bool) ($item['ok'] ?? false);
+                $recipient = (string) ($item['recipient'] ?? '');
+                $error = (string) ($item['error'] ?? '');
+                ?>
+                <div>
+                    <small>
+                        <?= $ok ? 'OK' : 'FAIL' ?> — <?= e($recipient) ?>
+                        <?= $error !== '' ? (' | ' . e($error)) : '' ?>
+                    </small>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+        <?php if (!empty($telegramDiagnostics['last_error'])): ?>
+            <div><small>Последняя ошибка: <?= e((string) $telegramDiagnostics['last_error']) ?></small></div>
+        <?php endif; ?>
+        <div><small>Важно: Telegram-бот должен иметь доступ к chat_id (пользователь должен нажать Start боту).</small></div>
+    </div>
+    <?php
+}

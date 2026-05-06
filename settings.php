@@ -11,6 +11,7 @@ $authError = null;
 $formError = null;
 $formSuccess = null;
 $mailDiagnostics = null;
+$telegramDiagnostics = null;
 
 if (isset($_GET['logout']) && $_GET['logout'] === '1') {
     unset($_SESSION['settings_auth']);
@@ -37,6 +38,9 @@ if ($isAuthed && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (array_key_exists('mailDiagnostics', $result)) {
             $mailDiagnostics = $result['mailDiagnostics'];
         }
+        if (array_key_exists('telegramDiagnostics', $result)) {
+            $telegramDiagnostics = $result['telegramDiagnostics'];
+        }
         if (isset($result['success'])) {
             $formSuccess = (string) $result['success'];
         }
@@ -50,6 +54,7 @@ $sites = $isAuthed ? getSitesWithStats($pdo) : [];
 $tzLabel = displayTimezoneLabel();
 $currentInterval = $isAuthed ? getCheckIntervalMinutes($pdo) : 60;
 $alertEmailsRaw = $isAuthed ? getAlertEmailRecipientsRaw($pdo) : '';
+$alertTelegramsRaw = $isAuthed ? getAlertTelegramRecipientsRaw($pdo) : '';
 $intervalOptions = [
     0 => 'Отключено',
     1 => '1 мин',
@@ -139,6 +144,25 @@ $intervalOptions = [
         </section>
 
         <section class="card">
+            <h2>Telegram-уведомления о недоступности</h2>
+            <form method="post" class="add-site-form">
+                <input type="hidden" name="action" value="update_alert_telegrams">
+                <label>
+                    Telegram chat_id/username через запятую
+                    <textarea name="alert_telegrams" rows="3" placeholder="1280987081, @channel_name"><?= e($alertTelegramsRaw) ?></textarea>
+                </label>
+                <div class="inline-form">
+                    <button type="submit">Сохранить</button>
+                </div>
+            </form>
+            <form method="post" class="inline-form">
+                <input type="hidden" name="action" value="test_alert_telegrams">
+                <button type="submit">Тест Telegram</button>
+            </form>
+            <?php renderTelegramDiagnostics($telegramDiagnostics); ?>
+        </section>
+
+        <section class="card">
             <h2>Добавить сайт</h2>
             <?php if ($formError !== null): ?>
                 <div class="alert fail"><?= e($formError) ?></div>
@@ -153,8 +177,8 @@ $intervalOptions = [
                     <input type="text" name="name" maxlength="255" required>
                 </label>
                 <label>
-                    URL
-                    <input type="url" name="url" maxlength="2048" placeholder="https://example.ru/" required>
+                    Ссылки для мониторинга (каждая с новой строки)
+                    <textarea name="endpoints" rows="4" placeholder="https://example.ru/&#10;https://example.ru/catalog/&#10;https://example.ru/api/health" required></textarea>
                 </label>
                 <button type="submit">Добавить</button>
             </form>
@@ -166,7 +190,7 @@ $intervalOptions = [
                 <thead>
                 <tr>
                     <th>Редактирование</th>
-                    <th>Текущий URL</th>
+                    <th>Ссылки</th>
                     <th>Последняя проверка (<?= e($tzLabel) ?>)</th>
                     <th>Действие</th>
                 </tr>
@@ -179,11 +203,15 @@ $intervalOptions = [
                                 <input type="hidden" name="action" value="update_site">
                                 <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">
                                 <input type="text" name="name" value="<?= e($site['name']) ?>" maxlength="255" required>
-                                <input type="url" name="url" value="<?= e($site['url']) ?>" maxlength="2048" required>
+                                <textarea name="endpoints" rows="3" required><?= e((string) ($site['endpoint_urls_text'] ?? $site['url'])) ?></textarea>
                                 <button type="submit">Сохранить</button>
                             </form>
                         </td>
-                        <td><small><?= e($site['url']) ?></small></td>
+                        <td>
+                            <small><?= e($site['url']) ?></small>
+                            <br>
+                            <small>Ссылок: <?= (int) ($site['endpoints_count'] ?? 1) ?></small>
+                        </td>
                         <td><small><?= e(formatUtcForUi(isset($site['last_checked_at']) ? (string) $site['last_checked_at'] : null)) ?></small></td>
                         <td class="actions-cell">
                             <form method="post" class="inline-form">

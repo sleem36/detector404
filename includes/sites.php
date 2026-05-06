@@ -1,6 +1,74 @@
 <?php
 declare(strict_types=1);
 
+function parseEndpointUrls(string $raw): array
+{
+    $parts = preg_split('/\r\n|\r|\n/', trim($raw)) ?: [];
+    $urls = [];
+    foreach ($parts as $part) {
+        $url = normalizeUrl($part);
+        if ($url === '') {
+            continue;
+        }
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return ['error' => 'Некорректный URL: ' . $url];
+        }
+        $segments = parse_url($url);
+        if (!isset($segments['scheme']) || !in_array(strtolower((string) $segments['scheme']), ['http', 'https'], true)) {
+            return ['error' => 'Поддерживаются только http/https URL: ' . $url];
+        }
+        $urls[$url] = true;
+    }
+
+    return ['urls' => array_keys($urls)];
+}
+
+function getSiteEndpointsBySiteId(PDO $pdo, int $siteId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, site_id, url, is_active, created_at
+         FROM site_endpoints
+         WHERE site_id = :site_id AND is_active = 1
+         ORDER BY id ASC'
+    );
+    $stmt->execute([':site_id' => $siteId]);
+    return $stmt->fetchAll() ?: [];
+}
+
+function syncSiteEndpoints(PDO $pdo, int $siteId, array $urls): void
+{
+    $existingStmt = $pdo->prepare('SELECT id, url FROM site_endpoints WHERE site_id = :site_id');
+    $existingStmt->execute([':site_id' => $siteId]);
+    $existingRows = $existingStmt->fetchAll() ?: [];
+    $existingMap = [];
+    foreach ($existingRows as $row) {
+        $existingMap[(string) $row['url']] = (int) $row['id'];
+    }
+
+    $insertStmt = $pdo->prepare(
+        'INSERT INTO site_endpoints(site_id, url, is_active, created_at)
+         VALUES(:site_id, :url, 1, CURRENT_TIMESTAMP)'
+    );
+    $activateStmt = $pdo->prepare('UPDATE site_endpoints SET is_active = 1 WHERE id = :id');
+    $deactivateStmt = $pdo->prepare('UPDATE site_endpoints SET is_active = 0 WHERE id = :id');
+
+    foreach ($urls as $url) {
+        if (isset($existingMap[$url])) {
+            $activateStmt->execute([':id' => $existingMap[$url]]);
+            unset($existingMap[$url]);
+            continue;
+        }
+        $insertStmt->execute([
+            ':site_id' => $siteId,
+            ':url' => $url,
+        ]);
+    }
+
+    foreach ($existingMap as $id) {
+        $deactivateStmt->execute([':id' => $id]);
+    }
+}
+
 function getSitesWithStats(PDO $pdo): array
 {
     $sql = <<<SQL
@@ -8,6 +76,15 @@ SELECT
     s.id,
     s.name,
     s.url,
+    (
+        SELECT COUNT(*) FROM site_endpoints se
+        WHERE se.site_id = s.id AND se.is_active = 1
+    ) AS endpoints_count,
+    (
+        SELECT GROUP_CONCAT(se2.url, '\n') FROM site_endpoints se2
+        WHERE se2.site_id = s.id AND se2.is_active = 1
+        ORDER BY se2.id ASC
+    ) AS endpoint_urls_text,
     (
         SELECT c1.status_code FROM checks c1
         WHERE c1.site_id = s.id
@@ -44,7 +121,13 @@ function getSiteById(PDO $pdo, int $siteId): ?array
     $stmt = $pdo->prepare('SELECT id, name, url, created_at FROM sites WHERE id = :id LIMIT 1');
     $stmt->execute([':id' => $siteId]);
     $row = $stmt->fetch();
-    return $row ?: null;
+    if (!$row) {
+        return null;
+    }
+
+    $row['endpoints'] = getSiteEndpointsBySiteId($pdo, (int) $row['id']);
+    $row['endpoint_urls_text'] = implode("\n", array_column($row['endpoints'], 'url'));
+    return $row;
 }
 
 function getHistory(PDO $pdo, int $siteId, string $from, string $to): array
@@ -78,70 +161,62 @@ function normalizeUrl(string $url): string
     return rtrim($url, '/') . '/';
 }
 
-function addSite(PDO $pdo, string $name, string $url): array
+function addSite(PDO $pdo, string $name, string $urlsRaw): array
 {
     $name = trim($name);
-    $url = normalizeUrl($url);
+    $parsed = parseEndpointUrls($urlsRaw);
 
     if ($name === '') {
         return ['ok' => false, 'error' => 'Введите название сайта'];
     }
 
-    if ($url === '') {
-        return ['ok' => false, 'error' => 'Введите URL сайта'];
+    if (isset($parsed['error'])) {
+        return ['ok' => false, 'error' => (string) $parsed['error']];
     }
 
-    if (!filter_var($url, FILTER_VALIDATE_URL)) {
-        return ['ok' => false, 'error' => 'Некорректный URL'];
+    $urls = $parsed['urls'] ?? [];
+    if (!is_array($urls) || $urls === []) {
+        return ['ok' => false, 'error' => 'Введите хотя бы один URL (каждый с новой строки)'];
     }
-
-    $parts = parse_url($url);
-    if (!isset($parts['scheme']) || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-        return ['ok' => false, 'error' => 'Поддерживаются только http/https URL'];
-    }
-
-    $existsStmt = $pdo->prepare('SELECT id FROM sites WHERE url = :url LIMIT 1');
-    $existsStmt->execute([':url' => $url]);
-    if ($existsStmt->fetch()) {
-        return ['ok' => false, 'error' => 'Такой сайт уже есть в списке'];
-    }
+    $primaryUrl = (string) $urls[0];
 
     $insertStmt = $pdo->prepare(
         'INSERT INTO sites(name, url, created_at) VALUES(:name, :url, CURRENT_TIMESTAMP)'
     );
     $insertStmt->execute([
         ':name' => $name,
-        ':url' => $url,
+        ':url' => $primaryUrl,
     ]);
+
+    $siteId = (int) $pdo->lastInsertId();
+    syncSiteEndpoints($pdo, $siteId, $urls);
 
     return ['ok' => true];
 }
 
-function updateSite(PDO $pdo, int $siteId, string $name, string $url): array
+function updateSite(PDO $pdo, int $siteId, string $name, string $urlsRaw): array
 {
     if ($siteId <= 0) {
         return ['ok' => false, 'error' => 'Некорректный id сайта'];
     }
 
     $name = trim($name);
-    $url = normalizeUrl($url);
+    $parsed = parseEndpointUrls($urlsRaw);
 
     if ($name === '') {
         return ['ok' => false, 'error' => 'Введите название сайта'];
     }
 
-    if ($url === '') {
-        return ['ok' => false, 'error' => 'Введите URL сайта'];
+    if (isset($parsed['error'])) {
+        return ['ok' => false, 'error' => (string) $parsed['error']];
     }
 
-    if (!filter_var($url, FILTER_VALIDATE_URL)) {
-        return ['ok' => false, 'error' => 'Некорректный URL'];
+    $urls = $parsed['urls'] ?? [];
+    if (!is_array($urls) || $urls === []) {
+        return ['ok' => false, 'error' => 'Введите хотя бы один URL (каждый с новой строки)'];
     }
 
-    $parts = parse_url($url);
-    if (!isset($parts['scheme']) || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-        return ['ok' => false, 'error' => 'Поддерживаются только http/https URL'];
-    }
+    $primaryUrl = (string) $urls[0];
 
     $existsStmt = $pdo->prepare('SELECT id FROM sites WHERE id = :id LIMIT 1');
     $existsStmt->execute([':id' => $siteId]);
@@ -149,21 +224,13 @@ function updateSite(PDO $pdo, int $siteId, string $name, string $url): array
         return ['ok' => false, 'error' => 'Сайт не найден'];
     }
 
-    $duplicateStmt = $pdo->prepare('SELECT id FROM sites WHERE url = :url AND id != :id LIMIT 1');
-    $duplicateStmt->execute([
-        ':url' => $url,
-        ':id' => $siteId,
-    ]);
-    if ($duplicateStmt->fetch()) {
-        return ['ok' => false, 'error' => 'Такой URL уже используется другим сайтом'];
-    }
-
     $updateStmt = $pdo->prepare('UPDATE sites SET name = :name, url = :url WHERE id = :id');
     $updateStmt->execute([
         ':id' => $siteId,
         ':name' => $name,
-        ':url' => $url,
+        ':url' => $primaryUrl,
     ]);
+    syncSiteEndpoints($pdo, $siteId, $urls);
 
     return ['ok' => true];
 }
@@ -192,59 +259,118 @@ function runSiteCheck(PDO $pdo, int $siteId): array
         return ['ok' => false, 'error' => 'Некорректный id сайта'];
     }
 
-    $siteStmt = $pdo->prepare('SELECT id, url FROM sites WHERE id = :id LIMIT 1');
+    $siteStmt = $pdo->prepare('SELECT id, url, name FROM sites WHERE id = :id LIMIT 1');
     $siteStmt->execute([':id' => $siteId]);
     $site = $siteStmt->fetch();
     if (!$site) {
         return ['ok' => false, 'error' => 'Сайт не найден'];
     }
 
-    $config = appConfig();
-    $now = nowUtc();
-    $ch = curl_init((string) $site['url']);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS => 5,
-        CURLOPT_NOBODY => true,
-        CURLOPT_TIMEOUT => (int) $config['curl']['timeout'],
-        CURLOPT_CONNECTTIMEOUT => (int) $config['curl']['connect_timeout'],
-        CURLOPT_USERAGENT => (string) $config['curl']['user_agent'],
-    ]);
-
-    $start = microtime(true);
-    curl_exec($ch);
-    $elapsedMs = (int) round((microtime(true) - $start) * 1000);
-    $curlError = curl_errno($ch);
-    $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($curlError !== 0) {
-        $statusCode = 0;
-        $isAvailable = 0;
-        $elapsedMs = null;
-    } else {
-        $isAvailable = ($statusCode >= 200 && $statusCode < 400) ? 1 : 0;
+    $endpoints = getSiteEndpointsBySiteId($pdo, (int) $site['id']);
+    if ($endpoints === []) {
+        // Fallback for old records before endpoints migration.
+        $legacyUrl = normalizeUrl((string) $site['url']);
+        if ($legacyUrl !== '') {
+            syncSiteEndpoints($pdo, (int) $site['id'], [$legacyUrl]);
+            $endpoints = getSiteEndpointsBySiteId($pdo, (int) $site['id']);
+        }
+    }
+    if ($endpoints === []) {
+        return ['ok' => false, 'error' => 'Для сайта не задано ни одной ссылки для проверки'];
     }
 
-    $insert = $pdo->prepare(
-        'INSERT INTO checks(site_id, timestamp, status_code, response_time_ms, is_available)
-         VALUES(:site_id, :timestamp, :status_code, :response_time_ms, :is_available)'
+    $config = appConfig();
+    $now = nowUtc();
+    $endpointInsert = $pdo->prepare(
+        'INSERT INTO endpoint_checks(site_id, endpoint_id, timestamp, status_code, response_time_ms, is_available)
+         VALUES(:site_id, :endpoint_id, :timestamp, :status_code, :response_time_ms, :is_available)'
     );
-    $insert->execute([
+    $failedEndpoints = [];
+    $successfulStatus = null;
+    $firstFailedStatus = null;
+    $responseSamples = [];
+
+    foreach ($endpoints as $endpoint) {
+        $endpointUrl = (string) $endpoint['url'];
+        $ch = curl_init($endpointUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_NOBODY => true,
+            CURLOPT_TIMEOUT => (int) $config['curl']['timeout'],
+            CURLOPT_CONNECTTIMEOUT => (int) $config['curl']['connect_timeout'],
+            CURLOPT_USERAGENT => (string) $config['curl']['user_agent'],
+        ]);
+
+        $start = microtime(true);
+        curl_exec($ch);
+        $elapsedMs = (int) round((microtime(true) - $start) * 1000);
+        $curlError = curl_errno($ch);
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($curlError !== 0) {
+            $statusCode = 0;
+            $isAvailable = 0;
+            $elapsedMs = null;
+        } else {
+            $isAvailable = ($statusCode >= 200 && $statusCode < 400) ? 1 : 0;
+        }
+
+        $endpointInsert->execute([
+            ':site_id' => (int) $site['id'],
+            ':endpoint_id' => (int) $endpoint['id'],
+            ':timestamp' => $now,
+            ':status_code' => $statusCode > 0 ? $statusCode : null,
+            ':response_time_ms' => $elapsedMs,
+            ':is_available' => $isAvailable,
+        ]);
+
+        if ($isAvailable === 1) {
+            if ($successfulStatus === null && $statusCode > 0) {
+                $successfulStatus = $statusCode;
+            }
+            if ($elapsedMs !== null) {
+                $responseSamples[] = $elapsedMs;
+            }
+            continue;
+        }
+
+        if ($firstFailedStatus === null && $statusCode > 0) {
+            $firstFailedStatus = $statusCode;
+        }
+        $failedEndpoints[] = [
+            'url' => $endpointUrl,
+            'status_code' => $statusCode > 0 ? $statusCode : null,
+            'response_time_ms' => $elapsedMs,
+        ];
+    }
+
+    $isAvailable = $failedEndpoints === [] ? 1 : 0;
+    $statusCode = $isAvailable === 1 ? $successfulStatus : $firstFailedStatus;
+    $elapsedMs = $responseSamples === [] ? null : (int) round(array_sum($responseSamples) / count($responseSamples));
+
+    $siteInsert = $pdo->prepare(
+        'INSERT INTO checks(site_id, endpoint_id, timestamp, status_code, response_time_ms, is_available)
+         VALUES(:site_id, NULL, :timestamp, :status_code, :response_time_ms, :is_available)'
+    );
+    $siteInsert->execute([
         ':site_id' => (int) $site['id'],
         ':timestamp' => $now,
-        ':status_code' => $statusCode > 0 ? $statusCode : null,
+        ':status_code' => $statusCode,
         ':response_time_ms' => $elapsedMs,
         ':is_available' => $isAvailable,
     ]);
 
     return [
         'ok' => true,
-        'status_code' => $statusCode > 0 ? $statusCode : null,
+        'status_code' => $statusCode,
         'response_time_ms' => $elapsedMs,
         'is_available' => $isAvailable,
         'checked_at' => $now,
+        'failed_endpoints' => $failedEndpoints,
+        'checked_endpoints_count' => count($endpoints),
     ];
 }
 

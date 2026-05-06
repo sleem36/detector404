@@ -68,8 +68,9 @@ function sendSiteStatusAlert(PDO $pdo, int $siteId, array $checkResult, string $
         return;
     }
 
-    $recipients = getAlertEmailRecipients($pdo);
-    if ($recipients === []) {
+    $emailRecipients = getAlertEmailRecipients($pdo);
+    $telegramRecipients = getAlertTelegramRecipients($pdo);
+    if ($emailRecipients === [] && $telegramRecipients === []) {
         return;
     }
 
@@ -77,12 +78,29 @@ function sendSiteStatusAlert(PDO $pdo, int $siteId, array $checkResult, string $
     $response = $checkResult['response_time_ms'] !== null ? ((string) $checkResult['response_time_ms'] . ' ms') : '—';
 
     if ($eventType === 'down') {
+        $failedEndpoints = $checkResult['failed_endpoints'] ?? [];
+        $failedText = '';
+        if (is_array($failedEndpoints) && $failedEndpoints !== []) {
+            $lines = [];
+            foreach ($failedEndpoints as $item) {
+                $url = (string) ($item['url'] ?? '');
+                $code = $item['status_code'] !== null ? ('HTTP ' . (int) $item['status_code']) : 'нет HTTP-кода';
+                if ($url === '') {
+                    continue;
+                }
+                $lines[] = '- ' . $url . ' (' . $code . ')';
+            }
+            if ($lines !== []) {
+                $failedText = "\nПроблемные ссылки:\n" . implode("\n", $lines) . "\n";
+            }
+        }
         $subject = emailSubjectUtf8('Мониторинг: сайт недоступен - ' . (string) $site['name']);
         $message = "Зафиксирована недоступность сайта.\n\n"
             . 'Сайт: ' . (string) $site['name'] . "\n"
             . 'URL: ' . (string) $site['url'] . "\n"
             . 'Статус: ' . $status . "\n"
             . 'Отклик: ' . $response . "\n"
+            . $failedText
             . 'Время (UTC): ' . $now . "\n";
     } else {
         $subject = emailSubjectUtf8('Мониторинг: сайт восстановлен - ' . (string) $site['name']);
@@ -96,7 +114,12 @@ function sendSiteStatusAlert(PDO $pdo, int $siteId, array $checkResult, string $
             . 'Время восстановления (UTC): ' . $now . "\n";
     }
 
-    sendEmailToRecipients($recipients, $subject, $message);
+    if ($emailRecipients !== []) {
+        sendEmailToRecipients($emailRecipients, $subject, $message);
+    }
+    if ($telegramRecipients !== []) {
+        sendTelegramToRecipients($telegramRecipients, $message);
+    }
 }
 
 function processSiteAlertState(PDO $pdo, int $siteId, array $checkResult, string $now): void
@@ -122,14 +145,21 @@ function processSiteAlertState(PDO $pdo, int $siteId, array $checkResult, string
         setSetting($pdo, $failKey, (string) $failCount);
         setSetting($pdo, $successKey, '0');
 
+        // First failed check schedules a quick confirmation in 2 minutes.
+        if ($state !== 'down' && $failCount === 1) {
+            scheduleSiteRecheck($pdo, $siteId, $now, 2);
+        }
+
         if ($failCount >= $thresholds['down'] && $state !== 'down') {
             setSetting($pdo, $stateKey, 'down');
             openIncident($pdo, $siteId, $now, $statusCode);
             sendSiteStatusAlert($pdo, $siteId, $checkResult, $now, 'down');
+            clearSiteRecheck($pdo, $siteId);
         }
         return;
     }
 
+    clearSiteRecheck($pdo, $siteId);
     $successCount++;
     $failCount = 0;
     setSetting($pdo, $successKey, (string) $successCount);
