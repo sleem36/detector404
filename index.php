@@ -47,7 +47,10 @@ $tzLabel = displayTimezoneLabel();
                 ?>
                 <tr class="<?= $monitoringEnabled ? '' : 'site-row-paused' ?>">
                     <td>
-                        <a href="site.php?id=<?= (int) $site['id'] ?>"><?= e($site['name']) ?></a><br>
+                        <div class="site-name-row">
+                            <span class="status-dot <?= $monitoringEnabled ? 'on' : 'off' ?>" title="<?= $monitoringEnabled ? 'Мониторинг включен' : 'Мониторинг отключен' ?>"></span>
+                            <a href="site.php?id=<?= (int) $site['id'] ?>"><?= e($site['name']) ?></a>
+                        </div>
                         <small><?= e($site['url']) ?></small>
                         <?php if (!$monitoringEnabled && $monitoringNote !== ''): ?>
                             <div class="site-note"><small><?= e($monitoringNote) ?></small></div>

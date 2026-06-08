@@ -203,16 +203,16 @@ $intervalOptions = [
                             <form method="post" class="site-edit-form">
                                 <input type="hidden" name="action" value="update_site">
                                 <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">
-                                <input type="text" name="name" value="<?= e($site['name']) ?>" maxlength="255" required>
+                                <div class="site-name-row">
+                                    <span class="status-dot <?= $monitoringEnabled ? 'on' : 'off' ?>" title="<?= $monitoringEnabled ? 'Мониторинг включен' : 'Мониторинг отключен' ?>"></span>
+                                    <input type="text" name="name" value="<?= e($site['name']) ?>" maxlength="255" required>
+                                </div>
                                 <textarea name="endpoints" rows="3" required><?= e((string) ($site['endpoint_urls_text'] ?? $site['url'])) ?></textarea>
                                 <label class="checkbox-row">
                                     <input type="hidden" name="monitoring_enabled" value="0">
                                     <input type="checkbox" name="monitoring_enabled" value="1" <?= $monitoringEnabled ? 'checked' : '' ?>>
                                     <span>Мониторинг включен</span>
                                 </label>
-                                <?php if (!$monitoringEnabled): ?>
-                                    <div><span class="badge paused">Мониторинг отключен</span></div>
-                                <?php endif; ?>
                                 <label>
                                     Примечание (почему отключено / что сделать)
                                     <textarea name="monitoring_note" rows="2" maxlength="2000" placeholder="Например: добавить IP 80.87.103.223 в whitelist WAF на selectauto24.ru"><?= e((string) ($site['monitoring_note'] ?? '')) ?></textarea>
