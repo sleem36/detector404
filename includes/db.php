@@ -143,6 +143,41 @@ function applyEnvOverrides(array $config): array
         $config['smtp']['timeout'] = $smtpTimeout;
     }
 
+    $curlUserAgent = envValue('CURL_USER_AGENT');
+    if ($curlUserAgent !== null && trim($curlUserAgent) !== '') {
+        $config['curl']['user_agent'] = trim($curlUserAgent);
+    }
+
+    $curlAcceptLanguage = envValue('CURL_ACCEPT_LANGUAGE');
+    if ($curlAcceptLanguage !== null && trim($curlAcceptLanguage) !== '') {
+        $config['curl']['accept_language'] = trim($curlAcceptLanguage);
+    }
+
+    $checkRetryWithGet = envBool('CHECK_RETRY_WITH_GET', null);
+    if ($checkRetryWithGet !== null) {
+        $config['checks']['retry_with_get'] = $checkRetryWithGet;
+    }
+
+    $checkAvailabilityMode = envValue('CHECK_AVAILABILITY_MODE');
+    if ($checkAvailabilityMode !== null && trim($checkAvailabilityMode) !== '') {
+        $config['checks']['availability_mode'] = strtolower(trim($checkAvailabilityMode));
+    }
+
+    $checkGetBodyLimit = envInt('CHECK_GET_BODY_LIMIT_BYTES', null);
+    if ($checkGetBodyLimit !== null && $checkGetBodyLimit > 0) {
+        $config['checks']['get_body_limit_bytes'] = $checkGetBodyLimit;
+    }
+
+    $alertDownThreshold = envInt('ALERT_DOWN_FAILURES_THRESHOLD', null);
+    if ($alertDownThreshold !== null && $alertDownThreshold > 0) {
+        $config['alerts']['down_failures_threshold'] = $alertDownThreshold;
+    }
+
+    $alertUpThreshold = envInt('ALERT_UP_SUCCESS_THRESHOLD', null);
+    if ($alertUpThreshold !== null && $alertUpThreshold > 0) {
+        $config['alerts']['up_success_threshold'] = $alertUpThreshold;
+    }
+
     $uiTimezone = envValue('APP_TIMEZONE');
     if ($uiTimezone !== null && trim($uiTimezone) !== '') {
         $config['ui']['timezone'] = trim($uiTimezone);

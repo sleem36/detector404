@@ -6,13 +6,20 @@ return [
     'curl' => [
         'timeout' => 10,
         'connect_timeout' => 10,
-        'user_agent' => 'Detector404/1.0 (+local-monitor)',
+        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'accept_language' => 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
     ],
     'checks' => [
         'interval_minutes' => 60,
+        // HEAD -> GET retry helps when WAF blocks HEAD but allows browser-like GET.
+        'retry_with_get' => true,
+        'get_body_limit_bytes' => 8192,
+        // primary = only first URL decides up/down; all = strict multi-endpoint mode.
+        'availability_mode' => 'primary',
+        'challenge_status_codes' => [403, 429, 503],
     ],
     'alerts' => [
-        'down_failures_threshold' => 2,
+        'down_failures_threshold' => 3,
         'up_success_threshold' => 2,
     ],
     'smtp' => [

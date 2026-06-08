@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/http_probe.php';
+
 function parseEndpointUrls(string $raw): array
 {
     $parts = preg_split('/\r\n|\r|\n/', trim($raw)) ?: [];
@@ -279,77 +281,43 @@ function runSiteCheck(PDO $pdo, int $siteId): array
         return ['ok' => false, 'error' => 'Для сайта не задано ни одной ссылки для проверки'];
     }
 
-    $config = appConfig();
+    $probeSettings = httpProbeSettings();
     $now = nowUtc();
     $endpointInsert = $pdo->prepare(
         'INSERT INTO endpoint_checks(site_id, endpoint_id, timestamp, status_code, response_time_ms, is_available)
          VALUES(:site_id, :endpoint_id, :timestamp, :status_code, :response_time_ms, :is_available)'
     );
-    $failedEndpoints = [];
-    $successfulStatus = null;
-    $firstFailedStatus = null;
-    $responseSamples = [];
+    $endpointResults = [];
 
     foreach ($endpoints as $endpoint) {
         $endpointUrl = (string) $endpoint['url'];
-        $ch = curl_init($endpointUrl);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 5,
-            CURLOPT_NOBODY => true,
-            CURLOPT_TIMEOUT => (int) $config['curl']['timeout'],
-            CURLOPT_CONNECTTIMEOUT => (int) $config['curl']['connect_timeout'],
-            CURLOPT_USERAGENT => (string) $config['curl']['user_agent'],
-        ]);
-
-        $start = microtime(true);
-        curl_exec($ch);
-        $elapsedMs = (int) round((microtime(true) - $start) * 1000);
-        $curlError = curl_errno($ch);
-        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($curlError !== 0) {
-            $statusCode = 0;
-            $isAvailable = 0;
-            $elapsedMs = null;
-        } else {
-            $isAvailable = ($statusCode >= 200 && $statusCode < 400) ? 1 : 0;
-        }
+        $probe = probeHttpEndpoint($endpointUrl);
+        $statusCode = $probe['status_code'] ?? null;
+        $elapsedMs = $probe['response_time_ms'] ?? null;
+        $isAvailable = (int) ($probe['is_available'] ?? 0);
 
         $endpointInsert->execute([
             ':site_id' => (int) $site['id'],
             ':endpoint_id' => (int) $endpoint['id'],
             ':timestamp' => $now,
-            ':status_code' => $statusCode > 0 ? $statusCode : null,
+            ':status_code' => $statusCode,
             ':response_time_ms' => $elapsedMs,
             ':is_available' => $isAvailable,
         ]);
 
-        if ($isAvailable === 1) {
-            if ($successfulStatus === null && $statusCode > 0) {
-                $successfulStatus = $statusCode;
-            }
-            if ($elapsedMs !== null) {
-                $responseSamples[] = $elapsedMs;
-            }
-            continue;
-        }
-
-        if ($firstFailedStatus === null && $statusCode > 0) {
-            $firstFailedStatus = $statusCode;
-        }
-        $failedEndpoints[] = [
+        $endpointResults[] = [
             'url' => $endpointUrl,
-            'status_code' => $statusCode > 0 ? $statusCode : null,
+            'status_code' => $statusCode,
             'response_time_ms' => $elapsedMs,
+            'is_available' => $isAvailable,
         ];
     }
 
-    $isAvailable = $failedEndpoints === [] ? 1 : 0;
-    $statusCode = $isAvailable === 1 ? $successfulStatus : $firstFailedStatus;
-    $elapsedMs = $responseSamples === [] ? null : (int) round(array_sum($responseSamples) / count($responseSamples));
+    $aggregate = evaluateSiteAvailability($endpointResults, $probeSettings['availability_mode']);
+    $isAvailable = (int) ($aggregate['is_available'] ?? 0);
+    $statusCode = $aggregate['status_code'] ?? null;
+    $elapsedMs = $aggregate['response_time_ms'] ?? null;
+    $failedEndpoints = $aggregate['failed_endpoints'] ?? [];
 
     $siteInsert = $pdo->prepare(
         'INSERT INTO checks(site_id, endpoint_id, timestamp, status_code, response_time_ms, is_available)
