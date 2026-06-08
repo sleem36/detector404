@@ -6,17 +6,23 @@ return [
     'curl' => [
         'timeout' => 10,
         'connect_timeout' => 10,
-        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'accept_language' => 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'user_agent' => 'Detector404/1.0 (+local-monitor)',
     ],
     'checks' => [
         'interval_minutes' => 60,
-        // HEAD -> GET retry helps when WAF blocks HEAD but allows browser-like GET.
-        'retry_with_get' => true,
         'get_body_limit_bytes' => 8192,
-        // primary = only first URL decides up/down; all = strict multi-endpoint mode.
-        'availability_mode' => 'primary',
+        'retry_with_get' => false,
+        'availability_mode' => 'all',
         'challenge_status_codes' => [403, 429, 503],
+    ],
+    'site_probe_profiles' => [
+        'selectauto24.ru' => [
+            'browser_like' => true,
+            'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'accept_language' => 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'retry_with_get' => true,
+            'availability_mode' => 'primary',
+        ],
     ],
     'alerts' => [
         'down_failures_threshold' => 3,

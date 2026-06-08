@@ -1,27 +1,65 @@
 <?php
 declare(strict_types=1);
 
-function httpProbeSettings(): array
+function siteProbeHost(string $url): string
+{
+    $host = parse_url($url, PHP_URL_HOST);
+    return strtolower((string) $host);
+}
+
+function siteProbeProfile(string $siteUrl): array
+{
+    $host = siteProbeHost($siteUrl);
+    if ($host === '') {
+        return [];
+    }
+
+    $profiles = appConfig()['site_probe_profiles'] ?? [];
+    if (!is_array($profiles)) {
+        return [];
+    }
+
+    $profile = $profiles[$host] ?? [];
+    return is_array($profile) ? $profile : [];
+}
+
+function httpProbeSettings(?array $profileOverride = null): array
 {
     $config = appConfig();
     $curl = $config['curl'] ?? [];
     $checks = $config['checks'] ?? [];
+    $profile = $profileOverride ?? [];
 
     $challengeCodes = $checks['challenge_status_codes'] ?? [403, 429, 503];
     if (!is_array($challengeCodes)) {
         $challengeCodes = [403, 429, 503];
     }
 
+    $userAgent = (string) ($profile['user_agent'] ?? $curl['user_agent'] ?? 'Detector404/1.0 (+local-monitor)');
+    $acceptLanguage = (string) ($profile['accept_language'] ?? 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7');
+    $retryWithGet = array_key_exists('retry_with_get', $profile)
+        ? (bool) $profile['retry_with_get']
+        : (bool) ($checks['retry_with_get'] ?? false);
+    $availabilityMode = array_key_exists('availability_mode', $profile)
+        ? strtolower((string) $profile['availability_mode'])
+        : strtolower((string) ($checks['availability_mode'] ?? 'all'));
+
     return [
         'timeout' => max(1, (int) ($curl['timeout'] ?? 10)),
         'connect_timeout' => max(1, (int) ($curl['connect_timeout'] ?? 10)),
-        'user_agent' => (string) ($curl['user_agent'] ?? ''),
-        'accept_language' => (string) ($curl['accept_language'] ?? 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'),
-        'retry_with_get' => (bool) ($checks['retry_with_get'] ?? true),
+        'user_agent' => $userAgent,
+        'accept_language' => $acceptLanguage,
+        'browser_like' => (bool) ($profile['browser_like'] ?? false),
+        'retry_with_get' => $retryWithGet,
         'get_body_limit_bytes' => max(1024, (int) ($checks['get_body_limit_bytes'] ?? 8192)),
-        'availability_mode' => strtolower((string) ($checks['availability_mode'] ?? 'primary')),
+        'availability_mode' => $availabilityMode,
         'challenge_status_codes' => array_values(array_unique(array_map('intval', $challengeCodes))),
     ];
+}
+
+function httpProbeSettingsForSite(string $siteUrl): array
+{
+    return httpProbeSettings(siteProbeProfile($siteUrl));
 }
 
 function isHttpStatusAvailable(?int $statusCode): bool
@@ -60,26 +98,25 @@ function executeHttpProbe(string $url, array $settings, string $method): array
     $method = strtoupper($method) === 'GET' ? 'GET' : 'HEAD';
     $ch = curl_init($url);
 
-    $headers = [
-        'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language: ' . $settings['accept_language'],
-        'Cache-Control: no-cache',
-        'Pragma: no-cache',
-    ];
-
     $options = [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS => 5,
         CURLOPT_TIMEOUT => $settings['timeout'],
         CURLOPT_CONNECTTIMEOUT => $settings['connect_timeout'],
-        CURLOPT_USERAGENT => $settings['user_agent'] !== ''
-            ? $settings['user_agent']
-            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_USERAGENT => (string) ($settings['user_agent'] ?? 'Detector404/1.0 (+local-monitor)'),
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
     ];
+
+    if (!empty($settings['browser_like'])) {
+        $options[CURLOPT_HTTPHEADER] = [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language: ' . (string) ($settings['accept_language'] ?? 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'),
+            'Cache-Control: no-cache',
+            'Pragma: no-cache',
+        ];
+    }
 
     if ($method === 'HEAD') {
         $options[CURLOPT_NOBODY] = true;
@@ -126,9 +163,9 @@ function executeHttpProbe(string $url, array $settings, string $method): array
     ];
 }
 
-function probeHttpEndpoint(string $url): array
+function probeHttpEndpoint(string $url, ?array $settings = null): array
 {
-    $settings = httpProbeSettings();
+    $settings ??= httpProbeSettings();
     $headResult = executeHttpProbe($url, $settings, 'HEAD');
 
     if (!shouldRetryHttpProbe($headResult, $settings)) {

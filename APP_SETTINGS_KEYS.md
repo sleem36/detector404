@@ -30,12 +30,16 @@
 ## Логика мульти-ссылочного мониторинга
 
 - У каждого сайта может быть несколько URL для проверки (каждый URL — отдельный endpoint).
-- Режим доступности задаётся в `config.php` / `.env` (`CHECK_AVAILABILITY_MODE`):
-  - `primary` (по умолчанию) — up/down определяет только первая ссылка;
-  - `all` — сайт down, если упал хотя бы один endpoint;
-  - `any` — сайт up, если доступен хотя бы один endpoint;
-  - `majority` — сайт up, если доступна большая часть endpoint-ов.
-- Проверка endpoint-а выполняется как HEAD, при ошибке/неуспехе — повтор GET с browser-like заголовками (`CHECK_RETRY_WITH_GET=true`).
+- По умолчанию для всех сайтов: HEAD-запрос с `Detector404/1.0`, режим `all` (down, если упал хотя бы один endpoint).
+- Для сайтов с WAF/anti-bot можно задать точечный профиль в `config.php` → `site_probe_profiles` (ключ — домен, например `selectauto24.ru`):
+  - `browser_like` — browser-like заголовки и User-Agent;
+  - `retry_with_get` — повтор GET при неуспешном HEAD;
+  - `availability_mode`:
+    - `primary` — up/down определяет только первая ссылка;
+    - `all` — сайт down, если упал хотя бы один endpoint;
+    - `any` — сайт up, если доступен хотя бы один endpoint;
+    - `majority` — сайт up, если доступна большая часть endpoint-ов.
+- Для `selectauto24.ru` профиль включён по умолчанию; переопределения через `.env`: `SELECTAUTO24_PROBE_*`.
 - В таблицу `checks` сохраняется агрегированный результат по сайту за запуск.
 - В таблицу `endpoint_checks` сохраняются детальные результаты по каждому endpoint.
 - В DOWN-уведомлениях перечисляются проблемные ссылки, которые подтвердили инцидент.

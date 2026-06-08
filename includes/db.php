@@ -143,24 +143,25 @@ function applyEnvOverrides(array $config): array
         $config['smtp']['timeout'] = $smtpTimeout;
     }
 
-    $curlUserAgent = envValue('CURL_USER_AGENT');
-    if ($curlUserAgent !== null && trim($curlUserAgent) !== '') {
-        $config['curl']['user_agent'] = trim($curlUserAgent);
+    $selectautoUserAgent = envValue('SELECTAUTO24_PROBE_USER_AGENT');
+    if ($selectautoUserAgent !== null && trim($selectautoUserAgent) !== '') {
+        $config['site_probe_profiles']['selectauto24.ru']['user_agent'] = trim($selectautoUserAgent);
+        $config['site_probe_profiles']['selectauto24.ru']['browser_like'] = true;
     }
 
-    $curlAcceptLanguage = envValue('CURL_ACCEPT_LANGUAGE');
-    if ($curlAcceptLanguage !== null && trim($curlAcceptLanguage) !== '') {
-        $config['curl']['accept_language'] = trim($curlAcceptLanguage);
+    $selectautoAcceptLanguage = envValue('SELECTAUTO24_PROBE_ACCEPT_LANGUAGE');
+    if ($selectautoAcceptLanguage !== null && trim($selectautoAcceptLanguage) !== '') {
+        $config['site_probe_profiles']['selectauto24.ru']['accept_language'] = trim($selectautoAcceptLanguage);
     }
 
-    $checkRetryWithGet = envBool('CHECK_RETRY_WITH_GET', null);
-    if ($checkRetryWithGet !== null) {
-        $config['checks']['retry_with_get'] = $checkRetryWithGet;
+    $selectautoRetryWithGet = envBool('SELECTAUTO24_PROBE_RETRY_WITH_GET', null);
+    if ($selectautoRetryWithGet !== null) {
+        $config['site_probe_profiles']['selectauto24.ru']['retry_with_get'] = $selectautoRetryWithGet;
     }
 
-    $checkAvailabilityMode = envValue('CHECK_AVAILABILITY_MODE');
-    if ($checkAvailabilityMode !== null && trim($checkAvailabilityMode) !== '') {
-        $config['checks']['availability_mode'] = strtolower(trim($checkAvailabilityMode));
+    $selectautoAvailabilityMode = envValue('SELECTAUTO24_PROBE_AVAILABILITY_MODE');
+    if ($selectautoAvailabilityMode !== null && trim($selectautoAvailabilityMode) !== '') {
+        $config['site_probe_profiles']['selectauto24.ru']['availability_mode'] = strtolower(trim($selectautoAvailabilityMode));
     }
 
     $checkGetBodyLimit = envInt('CHECK_GET_BODY_LIMIT_BYTES', null);

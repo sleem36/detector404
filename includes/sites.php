@@ -281,7 +281,7 @@ function runSiteCheck(PDO $pdo, int $siteId): array
         return ['ok' => false, 'error' => 'Для сайта не задано ни одной ссылки для проверки'];
     }
 
-    $probeSettings = httpProbeSettings();
+    $probeSettings = httpProbeSettingsForSite((string) $site['url']);
     $now = nowUtc();
     $endpointInsert = $pdo->prepare(
         'INSERT INTO endpoint_checks(site_id, endpoint_id, timestamp, status_code, response_time_ms, is_available)
@@ -291,7 +291,7 @@ function runSiteCheck(PDO $pdo, int $siteId): array
 
     foreach ($endpoints as $endpoint) {
         $endpointUrl = (string) $endpoint['url'];
-        $probe = probeHttpEndpoint($endpointUrl);
+        $probe = probeHttpEndpoint($endpointUrl, $probeSettings);
         $statusCode = $probe['status_code'] ?? null;
         $elapsedMs = $probe['response_time_ms'] ?? null;
         $isAvailable = (int) ($probe['is_available'] ?? 0);
