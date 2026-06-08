@@ -230,19 +230,13 @@ button:hover,
     opacity: 0.92;
 }
 
-.monitoring-cell {
-    min-width: 260px;
-}
-
-.monitoring-form {
+.site-edit-form {
     display: grid;
     gap: 8px;
-    margin-bottom: 8px;
 }
 
-.monitoring-form textarea {
+.site-edit-form textarea {
     width: 100%;
-    min-height: 72px;
 }
 
 .checkbox-row {

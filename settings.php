@@ -190,7 +190,6 @@ $intervalOptions = [
                 <thead>
                 <tr>
                     <th>Редактирование</th>
-                    <th>Мониторинг</th>
                     <th>Ссылки</th>
                     <th>Последняя проверка (<?= e($tzLabel) ?>)</th>
                     <th>Действие</th>
@@ -201,39 +200,25 @@ $intervalOptions = [
                     <?php $monitoringEnabled = isSiteMonitoringEnabled($site); ?>
                     <tr class="<?= $monitoringEnabled ? '' : 'site-row-paused' ?>">
                         <td>
-                            <form method="post" class="inline-form">
+                            <form method="post" class="site-edit-form">
                                 <input type="hidden" name="action" value="update_site">
                                 <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">
                                 <input type="text" name="name" value="<?= e($site['name']) ?>" maxlength="255" required>
                                 <textarea name="endpoints" rows="3" required><?= e((string) ($site['endpoint_urls_text'] ?? $site['url'])) ?></textarea>
-                                <button type="submit">Сохранить</button>
-                            </form>
-                        </td>
-                        <td class="monitoring-cell">
-                            <form method="post" class="monitoring-form">
-                                <input type="hidden" name="action" value="update_site_monitoring">
-                                <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">
                                 <label class="checkbox-row">
                                     <input type="hidden" name="monitoring_enabled" value="0">
                                     <input type="checkbox" name="monitoring_enabled" value="1" <?= $monitoringEnabled ? 'checked' : '' ?>>
                                     <span>Мониторинг включен</span>
                                 </label>
+                                <?php if (!$monitoringEnabled): ?>
+                                    <div><span class="badge paused">Мониторинг отключен</span></div>
+                                <?php endif; ?>
                                 <label>
                                     Примечание (почему отключено / что сделать)
-                                    <textarea name="monitoring_note" rows="3" maxlength="2000" placeholder="Например: добавить IP 80.87.103.223 в whitelist WAF на selectauto24.ru"><?= e((string) ($site['monitoring_note'] ?? '')) ?></textarea>
+                                    <textarea name="monitoring_note" rows="2" maxlength="2000" placeholder="Например: добавить IP 80.87.103.223 в whitelist WAF на selectauto24.ru"><?= e((string) ($site['monitoring_note'] ?? '')) ?></textarea>
                                 </label>
-                                <button type="submit">Сохранить мониторинг</button>
+                                <button type="submit">Сохранить</button>
                             </form>
-                            <form method="post" class="inline-form">
-                                <input type="hidden" name="action" value="toggle_site_monitoring">
-                                <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">
-                                <button type="submit" class="secondary-btn">
-                                    <?= $monitoringEnabled ? 'Отключить мониторинг' : 'Включить мониторинг' ?>
-                                </button>
-                            </form>
-                            <?php if (!$monitoringEnabled): ?>
-                                <div><span class="badge paused">Мониторинг отключен</span></div>
-                            <?php endif; ?>
                         </td>
                         <td>
                             <small><?= e($site['url']) ?></small>
@@ -242,6 +227,13 @@ $intervalOptions = [
                         </td>
                         <td><small><?= e(formatUtcForUi(isset($site['last_checked_at']) ? (string) $site['last_checked_at'] : null)) ?></small></td>
                         <td class="actions-cell">
+                            <form method="post" class="inline-form">
+                                <input type="hidden" name="action" value="toggle_site_monitoring">
+                                <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">
+                                <button type="submit" class="secondary-btn">
+                                    <?= $monitoringEnabled ? 'Отключить' : 'Включить' ?>
+                                </button>
+                            </form>
                             <form method="post" class="inline-form">
                                 <input type="hidden" name="action" value="run_check">
                                 <input type="hidden" name="site_id" value="<?= (int) $site['id'] ?>">

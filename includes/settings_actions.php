@@ -25,15 +25,17 @@ function runSettingsAction(PDO $pdo, string $action): ?array
             $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
             $name = (string) ($_POST['name'] ?? '');
             $endpointsRaw = (string) ($_POST['endpoints'] ?? '');
-            return flashFromOperationResult(updateSite($pdo, (int) $siteId, $name, $endpointsRaw), 'Сайт обновлен', 'Ошибка обновления');
-        },
-        'update_site_monitoring' => static function () use ($pdo): array {
-            $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
             $enabled = (string) ($_POST['monitoring_enabled'] ?? '') === '1';
             $note = (string) ($_POST['monitoring_note'] ?? '');
+
+            $result = updateSite($pdo, (int) $siteId, $name, $endpointsRaw);
+            if (($result['ok'] ?? false) !== true) {
+                return ['error' => (string) ($result['error'] ?? 'Ошибка обновления')];
+            }
+
             return flashFromOperationResult(
                 setSiteMonitoring($pdo, (int) $siteId, $enabled, $note),
-                'Настройки мониторинга сохранены',
+                'Сайт обновлен',
                 'Ошибка сохранения настроек мониторинга'
             );
         },
