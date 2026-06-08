@@ -40,19 +40,28 @@ $tzLabel = displayTimezoneLabel();
             <tbody>
             <?php foreach ($sites as $site): ?>
                 <?php
+                $monitoringEnabled = isSiteMonitoringEnabled($site);
                 $isUp = isset($site['last_is_available']) && (int) $site['last_is_available'] === 1;
                 $statusText = $site['last_status_code'] ? ('HTTP ' . (int) $site['last_status_code']) : 'Нет данных';
+                $monitoringNote = trim((string) ($site['monitoring_note'] ?? ''));
                 ?>
-                <tr>
+                <tr class="<?= $monitoringEnabled ? '' : 'site-row-paused' ?>">
                     <td>
                         <a href="site.php?id=<?= (int) $site['id'] ?>"><?= e($site['name']) ?></a><br>
                         <small><?= e($site['url']) ?></small>
+                        <?php if (!$monitoringEnabled && $monitoringNote !== ''): ?>
+                            <div class="site-note"><small><?= e($monitoringNote) ?></small></div>
+                        <?php endif; ?>
                     </td>
                     <td>
-                        <span class="badge <?= $isUp ? 'ok' : 'fail' ?>">
-                            <?= $isUp ? 'Доступен' : 'Недоступен' ?>
-                        </span>
-                        <div><small><?= e($statusText) ?></small></div>
+                        <?php if (!$monitoringEnabled): ?>
+                            <span class="badge paused">Мониторинг отключен</span>
+                        <?php else: ?>
+                            <span class="badge <?= $isUp ? 'ok' : 'fail' ?>">
+                                <?= $isUp ? 'Доступен' : 'Недоступен' ?>
+                            </span>
+                            <div><small><?= e($statusText) ?></small></div>
+                        <?php endif; ?>
                     </td>
                     <td><?= e(formatUtcForUi(isset($site['last_checked_at']) ? (string) $site['last_checked_at'] : null)) ?></td>
                     <td><?= e((string) ($site['avg_response_time_24h'] ?? '—')) ?></td>

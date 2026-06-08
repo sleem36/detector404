@@ -78,6 +78,8 @@ SELECT
     s.id,
     s.name,
     s.url,
+    s.monitoring_enabled,
+    s.monitoring_note,
     (
         SELECT COUNT(*) FROM site_endpoints se
         WHERE se.site_id = s.id AND se.is_active = 1
@@ -118,9 +120,76 @@ SQL;
     return $pdo->query($sql)->fetchAll();
 }
 
+function isSiteMonitoringEnabled(array $site): bool
+{
+    return !array_key_exists('monitoring_enabled', $site) || (int) $site['monitoring_enabled'] === 1;
+}
+
+function resetSiteAlertCounters(PDO $pdo, int $siteId): void
+{
+    clearSiteRecheck($pdo, $siteId);
+    setSetting($pdo, 'site_fail_count_' . $siteId, '0');
+    setSetting($pdo, 'site_success_count_' . $siteId, '0');
+    setSetting($pdo, 'site_state_' . $siteId, 'unknown');
+}
+
+function setSiteMonitoring(PDO $pdo, int $siteId, bool $enabled, string $note): array
+{
+    if ($siteId <= 0) {
+        return ['ok' => false, 'error' => 'Некорректный id сайта'];
+    }
+
+    $existsStmt = $pdo->prepare('SELECT id, monitoring_enabled FROM sites WHERE id = :id LIMIT 1');
+    $existsStmt->execute([':id' => $siteId]);
+    $row = $existsStmt->fetch();
+    if (!$row) {
+        return ['ok' => false, 'error' => 'Сайт не найден'];
+    }
+
+    $wasEnabled = (int) ($row['monitoring_enabled'] ?? 1) === 1;
+    $note = trim($note);
+    if (strlen($note) > 2000) {
+        return ['ok' => false, 'error' => 'Примечание слишком длинное (макс. 2000 символов)'];
+    }
+
+    $updateStmt = $pdo->prepare(
+        'UPDATE sites SET monitoring_enabled = :enabled, monitoring_note = :note WHERE id = :id'
+    );
+    $updateStmt->execute([
+        ':id' => $siteId,
+        ':enabled' => $enabled ? 1 : 0,
+        ':note' => $note,
+    ]);
+
+    if ($wasEnabled && !$enabled) {
+        resetSiteAlertCounters($pdo, $siteId);
+    }
+
+    return ['ok' => true];
+}
+
+function toggleSiteMonitoring(PDO $pdo, int $siteId): array
+{
+    if ($siteId <= 0) {
+        return ['ok' => false, 'error' => 'Некорректный id сайта'];
+    }
+
+    $stmt = $pdo->prepare('SELECT monitoring_enabled, monitoring_note FROM sites WHERE id = :id LIMIT 1');
+    $stmt->execute([':id' => $siteId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return ['ok' => false, 'error' => 'Сайт не найден'];
+    }
+
+    $enabled = (int) ($row['monitoring_enabled'] ?? 1) !== 1;
+    return setSiteMonitoring($pdo, $siteId, $enabled, (string) ($row['monitoring_note'] ?? ''));
+}
+
 function getSiteById(PDO $pdo, int $siteId): ?array
 {
-    $stmt = $pdo->prepare('SELECT id, name, url, created_at FROM sites WHERE id = :id LIMIT 1');
+    $stmt = $pdo->prepare(
+        'SELECT id, name, url, created_at, monitoring_enabled, monitoring_note FROM sites WHERE id = :id LIMIT 1'
+    );
     $stmt->execute([':id' => $siteId]);
     $row = $stmt->fetch();
     if (!$row) {

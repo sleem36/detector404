@@ -8,9 +8,13 @@ $now = nowUtc();
 
 $runScheduled = shouldRunScheduledChecks($pdo, $now);
 
-$sites = $pdo->query('SELECT id FROM sites ORDER BY id ASC')->fetchAll();
+$sites = $pdo->query('SELECT id, monitoring_enabled FROM sites ORDER BY id ASC')->fetchAll();
 $siteIdsToCheck = [];
 foreach ($sites as $siteRow) {
+    if (!isSiteMonitoringEnabled($siteRow)) {
+        continue;
+    }
+
     $siteId = (int) $siteRow['id'];
     if ($runScheduled || isSiteRecheckDue($pdo, $siteId, $now)) {
         $siteIdsToCheck[] = $siteId;

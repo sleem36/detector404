@@ -27,6 +27,30 @@ function runSettingsAction(PDO $pdo, string $action): ?array
             $endpointsRaw = (string) ($_POST['endpoints'] ?? '');
             return flashFromOperationResult(updateSite($pdo, (int) $siteId, $name, $endpointsRaw), 'Сайт обновлен', 'Ошибка обновления');
         },
+        'update_site_monitoring' => static function () use ($pdo): array {
+            $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
+            $enabled = (string) ($_POST['monitoring_enabled'] ?? '') === '1';
+            $note = (string) ($_POST['monitoring_note'] ?? '');
+            return flashFromOperationResult(
+                setSiteMonitoring($pdo, (int) $siteId, $enabled, $note),
+                'Настройки мониторинга сохранены',
+                'Ошибка сохранения настроек мониторинга'
+            );
+        },
+        'toggle_site_monitoring' => static function () use ($pdo): array {
+            $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
+            $result = toggleSiteMonitoring($pdo, (int) $siteId);
+            if (($result['ok'] ?? false) !== true) {
+                return ['error' => (string) ($result['error'] ?? 'Ошибка переключения мониторинга')];
+            }
+
+            $stmt = $pdo->prepare('SELECT monitoring_enabled FROM sites WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => (int) $siteId]);
+            $row = $stmt->fetch();
+            $enabled = (int) ($row['monitoring_enabled'] ?? 1) === 1;
+
+            return ['success' => $enabled ? 'Мониторинг включен' : 'Мониторинг отключен'];
+        },
         'run_check' => static function () use ($pdo): array {
             $siteId = filter_input(INPUT_POST, 'site_id', FILTER_VALIDATE_INT);
             $result = runSiteCheck($pdo, (int) $siteId);

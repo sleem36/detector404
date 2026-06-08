@@ -323,6 +323,23 @@ function initDb(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_incidents_site_status ON incidents(site_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_incidents_started_at ON incidents(started_at)');
     ensureChecksEndpointColumn($pdo);
+    ensureSitesMonitoringColumns($pdo);
+}
+
+function ensureSitesMonitoringColumns(PDO $pdo): void
+{
+    $columns = $pdo->query('PRAGMA table_info(sites)')->fetchAll();
+    $names = [];
+    foreach ($columns as $column) {
+        $names[(string) ($column['name'] ?? '')] = true;
+    }
+
+    if (!isset($names['monitoring_enabled'])) {
+        $pdo->exec('ALTER TABLE sites ADD COLUMN monitoring_enabled INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!isset($names['monitoring_note'])) {
+        $pdo->exec('ALTER TABLE sites ADD COLUMN monitoring_note TEXT NOT NULL DEFAULT ""');
+    }
 }
 
 function ensureChecksEndpointColumn(PDO $pdo): void
