@@ -53,9 +53,6 @@ return [
         'timezone' => 'Europe/Yekaterinburg',
     ],
     'sites' => [
-        ['name' => 'Crystal Motors', 'url' => 'https://crystal-motors.ru/'],
-        ['name' => 'Autocred1 Barnaul', 'url' => 'https://barnaul.autocred1.ru/'],
-        ['name' => 'Autohouse24 Barnaul', 'url' => 'https://barnaul.autohouse24.ru/'],
-        ['name' => 'SelectAuto24', 'url' => 'https://selectauto24.ru/'],
+
     ],
 ];

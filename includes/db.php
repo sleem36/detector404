@@ -386,7 +386,7 @@ function seedSites(PDO $pdo): void
     }
 
     $toInsert = [];
-    foreach (appConfig()['sites'] as $site) {
+    foreach (appConfig()['sites'] ?? [] as $site) {
         if (!isset($existingUrls[$site['url']])) {
             $toInsert[] = $site;
         }
